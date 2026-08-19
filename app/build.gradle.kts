@@ -65,4 +65,10 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation(libs.dexlib2)
+    implementation(libs.axml)
+    implementation(libs.lspass)
+
+    // Should fix `Module with the Main dispatcher is missing. Add dependency providing the Main dispatcher, e.g. 'kotlinx-coroutines-android ...`
+//     implementation(libs.coroutines)
+//     implementation(libs.coroutinesAndroid)
 }
