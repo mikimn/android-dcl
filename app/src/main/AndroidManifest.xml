@@ -2,8 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <application
-        android:name=".DCLApplication"
+    <queries>
+        <intent>
+            <!-- After Android 11, show all packages that have a MainActivity with a launcher action -->
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
+
+    <uses-permission
+        android:name="android.permission.WAKE_LOCK" />
+
+    <uses-permission
+        android:name="android.permission.INTERNET" />
+
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application android:name=".dcl.DCLApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -12,11 +27,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.APKLoader"
+        tools:replace="android:appComponentFactory"
+        android:appComponentFactory="com.mikimn.apkloader.dcl.DCLAppComponentFactory"
         tools:targetApi="31">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.APKLoader">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -29,26 +46,82 @@
 <!--            android:name="com.android.calculator2.Calculator"-->
 <!--            android:targetActivity=".MainActivity" />-->
 
-        <meta-data android:name="com.google.android.gms.version" android:value="0" />
-
-        <activity
-            android:name="com.android.calculator2.Calculator"
-            android:exported="true"
-            android:launchMode="singleTask"
-            android:windowSoftInputMode="stateAlwaysHidden"
-            android:showForAllUsers="true"
-            android:showWhenLocked="true">
-        </activity>
-
         <activity
             android:theme="@style/Theme.APKLoader"
-            android:name=".DCLActivity"
+            android:name=".dcl.DCLActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="stateAlwaysHidden"
             android:showForAllUsers="true"
             android:showWhenLocked="true">
+
         </activity>
+
+        <activity android:name="com.shazam.android.activities.ConfigurationActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="shazam_activity"
+                    android:host="configuration" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name="com.whatsapp.registration.EULA" />
+
+        <!--    Shazam    -->
+        <service
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"/>
+
+        <!--    Flappy Bird APK    -->
+<!--        <meta-data android:name="com.google.android.gms.version" android:value="0" />-->
+
+        <!--    Flappy Bird APK    -->
+<!--        <activity android:name="com.dotgears.flappy.SplashScreen"-->
+<!--            android:exported="true"-->
+<!--            android:launchMode="singleTask" />-->
+
+        <!--    Flappy Bird APK    -->
+        <activity android:name="com.dotgears.GameActivity"
+            android:exported="true"
+            android:launchMode="singleTask" />
+
+        <activity android:name="com.oneplus.soundrecorder.RecorderActivity" />
+        <activity android:name="com.oneplus.card.activity.OldMainActivity" />
+        <activity android:name="io.strongapp.strong.ui.intro.ActivityIntro" />
+
+        <!--    Flappy Bird APK    -->
+<!--        <activity android:name="com.google.ads.AdActivity"-->
+<!--            android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|uiMode|screenSize|smallestScreenSize"/>-->
+
+        <!--    Flappy Bird APK    -->
+<!--        <meta-data-->
+<!--            android:name="com.google.android.gms.games.APP_ID"-->
+<!--            android:value="799978229476" />-->
+
+        <!--    Simple APK    -->
+<!--        <activity android:name="com.mikimn.simpleapp.MainActivity"-->
+<!--            android:exported="true"-->
+<!--            android:launchMode="singleTask" />-->
+
+        <!--    Calculator APK    -->
+<!--        <activity android:name="com.android.calculator2.Calculator"-->
+<!--            android:exported="true"-->
+<!--            android:launchMode="singleTask" />-->
+
+        <activity android:name="com.oneplus.card.activity.SettingsActivity" />
+
+        <service android:exported="false" android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery">
+            <meta-data android:name="backend:com.google.android.datatransport.cct.CctBackendFactory" android:value="cct"/>
+        </service>
+
+        <service
+            android:name="com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" >
+        </service>
     </application>
 
 </manifest>
