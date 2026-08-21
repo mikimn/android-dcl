@@ -32,12 +32,21 @@ class DCLContext(base: Context, private val pluginProvider: ContextPluginProvide
 //        return shadowPackageName ?: super.getPackageName()
 //    }
 
-    // TODO Provide injected resources here
-    override fun getResources(): Resources {
-        val originalResources = super.getResources()
+    private var cachedResources: Resources? = null
 
-        return object: Resources(originalResources.assets, originalResources.displayMetrics, originalResources
-            .configuration) {
+    // A Context's getResources() is expected to return a stable identity across calls
+    // (real Android Contexts cache it) - this used to build a brand-new wrapper on
+    // every call, silently discarding any ResourcesLoader anyone had attached to a
+    // previous call's result (e.g. DCLActivity.initResourceLoader's
+    // baseContext.resources.addLoaders(...)), since native code frequently re-fetches
+    // .resources rather than holding onto one reference.
+    override fun getResources(): Resources {
+        cachedResources?.let { return it }
+
+        val originalResources = super.getResources()
+        val wrapped = object : Resources(
+            originalResources.assets, originalResources.displayMetrics, originalResources.configuration
+        ) {
             override fun getIdentifier(name: String?, defType: String?, defPackage: String?): Int {
                 val defaultRes = super.getIdentifier(name, defType, defPackage)
 
@@ -50,6 +59,8 @@ class DCLContext(base: Context, private val pluginProvider: ContextPluginProvide
                 } ?: defaultRes
             }
         }
+        cachedResources = wrapped
+        return wrapped
     }
 
     override fun getApplicationContext(): Context {

@@ -23,6 +23,7 @@ import com.mikimn.apkloader.ENTRY_POINTS
 import com.mikimn.apkloader.apk.ManifestAwarePlugin
 import com.mikimn.apkloader.pm.PackageManagerAggregate
 import com.mikimn.apkloader.reflection.FieldMapper
+import com.mikimn.apkloader.reflection.tryGetField
 import com.mikimn.apkloader.reflection.tryGetMethod
 import com.mikimn.apkloader.reflection.tryGetValue
 import com.mikimn.apkloader.shadow.ShadowActivity
@@ -275,8 +276,45 @@ class DCLActivity : ComponentActivity() {
 
         val instrumentation = activity.tryGetValue<Instrumentation>("mInstrumentation")!!
         instrumentation.callActivityOnCreate(activity, savedInstanceState)
+        disableAutoGameSignIn(activity)
 
         FieldMapper.copy(this, activity)
+    }
+
+    /**
+     * Google's ~2014 BaseGameActivity/GameHelper sample helper (bundled by
+     * flappy-bird-1-3.apk, and likely other apps of that era) auto-connects to
+     * Play Games Services from onStart() unless GameHelper.setConnectOnStart(false)
+     * was called first - which this app's own code never does. A real installed
+     * app gets a legitimate sign-in flow; a loaded-but-not-installed app can't,
+     * since Play Services validates the calling app's package/signing identity
+     * against what's registered for the App ID, which will never match ours.
+     * Left alone, the async sign-in callback throws
+     * IllegalStateException("A fatal developer error has occurred") on the main
+     * thread and kills the whole process (see docs/apk-test-log.md).
+     *
+     * GameHelper's field names below are obfuscated and specific to this exact
+     * bundled build - this is a one-off, app-specific patch (matching the
+     * existing MlKitInitProvider special-case above), not a generic mechanism.
+     * Silently a no-op for any activity that isn't a BaseGameActivity.
+     */
+    private fun disableAutoGameSignIn(activity: Activity) {
+        try {
+            var cls: Class<*>? = activity.javaClass
+            var gameHelper: Any? = null
+            while (cls != null && gameHelper == null) {
+                gameHelper = cls.declaredFields
+                    .firstOrNull { it.type.name == "com.google.example.games.basegameutils.a" }
+                    ?.apply { isAccessible = true }
+                    ?.get(activity)
+                cls = cls.superclass
+            }
+            val connectOnStart = gameHelper?.javaClass?.tryGetField("l") ?: return
+            connectOnStart.setBoolean(gameHelper, false)
+            Log.i("DCLActivity", "Disabled GameHelper auto-connect-on-start for $activity")
+        } catch (e: Throwable) {
+            Log.e("DCLActivity", "Failed to disable GameHelper auto-connect", e)
+        }
     }
 
 //    private fun attachClassLoader(base: Context, loader: ClassLoader) {
