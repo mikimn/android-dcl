@@ -11,6 +11,7 @@ import android.content.res.Resources.NotFoundException
 import android.content.res.TypedArray
 import android.content.res.XmlResourceParser
 import android.content.res.loader.ResourcesLoader
+import android.os.Bundle
 import android.util.Log
 import androidx.core.os.bundleOf
 import androidx.core.text.isDigitsOnly
@@ -166,7 +167,16 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
             }
         }
 
-        aInfo.metaData = bundleOf()
+        aInfo.metaData = parseMetaData(node)
+
+        // Cache
+        applicationInfo = aInfo
+        return aInfo
+    }
+
+    /** Parses a component node's <meta-data> children into a Bundle, resolving @id/ references. */
+    private fun parseMetaData(node: Node): Bundle {
+        val metaData = bundleOf()
         val metaDataNodes = getChildrenByTagName(node, "meta-data")
         for (mdNode in metaDataNodes) {
             // TODO This is probably a bad way to do things
@@ -186,14 +196,15 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
                         "drawable" -> resId // TODO Make sure
                         "interpolator" -> resId // TODO Make sure
                         "array" -> resId // TODO Make sure
+                        "raw" -> resId // TODO Make sure
                         else -> throw IllegalStateException("Unknown typename $typeName")
                     }
 
                     when (resolved) {
-                        is String -> aInfo.metaData.putString(nodeName, resolved)
-                        is Int -> aInfo.metaData.putInt(nodeName, resolved)
-                        is Boolean -> aInfo.metaData.putBoolean(nodeName, resolved)
-                        is XmlResourceParser -> aInfo.metaData.putString(nodeName, resolved.text)
+                        is String -> metaData.putString(nodeName, resolved)
+                        is Int -> metaData.putInt(nodeName, resolved)
+                        is Boolean -> metaData.putBoolean(nodeName, resolved)
+                        is XmlResourceParser -> metaData.putString(nodeName, resolved.text)
                     }
                 } catch (ex: NotFoundException) {
                     // Left blank intentionally
@@ -202,22 +213,19 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
             } else if (nodeValue.isDigitsOnly() && nodeValue != "") {
                 val valueInt = nodeValue.toIntOrNull() ?: nodeValue.toLong()
                 if (valueInt.toLong() > Int.MAX_VALUE) {
-                    aInfo.metaData.putLong(nodeName, valueInt.toLong())
+                    metaData.putLong(nodeName, valueInt.toLong())
                 } else {
-                    aInfo.metaData.putInt(nodeName, valueInt.toInt())
+                    metaData.putInt(nodeName, valueInt.toInt())
                 }
             } else if (nodeValue.toFloatOrNull() != null) {
-                aInfo.metaData.putFloat(nodeName,  nodeValue.toFloat())
+                metaData.putFloat(nodeName, nodeValue.toFloat())
             } else if (nodeValue == "true" || nodeValue == "false") {
-                aInfo.metaData.putBoolean(nodeName, nodeValue.toBooleanStrict())
+                metaData.putBoolean(nodeName, nodeValue.toBooleanStrict())
             } else {
-                aInfo.metaData.putString(nodeName, nodeValue)
+                metaData.putString(nodeName, nodeValue)
             }
         }
-
-        // Cache
-        applicationInfo = aInfo
-        return aInfo
+        return metaData
     }
 
     fun getProviders(): List<ProviderInfo> {
@@ -280,6 +288,8 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
                     info.exported = attr.nodeValue.toBoolean()
                 }
             }
+
+            info.metaData = parseMetaData(node)
 
             result.add(info)
         }
