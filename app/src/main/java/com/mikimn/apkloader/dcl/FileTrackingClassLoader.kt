@@ -35,6 +35,19 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
 
     fun apkFile(name: String): LoadedApk? = loadedAPKFiles.getOrDefault(name, null)
 
+    /** Which loaded APK (if any) a class name belongs to, e.g. for retargeting an intent. */
+    fun ownerOf(className: String): LoadedApk? {
+        for (loadedApk in loadedAPKFiles.values) {
+            try {
+                loadedApk.loadClass(className)
+                return loadedApk
+            } catch (_: ClassNotFoundException) {
+                // Left blank intentionally
+            }
+        }
+        return null
+    }
+
     fun clearLast() {
         lastLoadedApk = null
     }

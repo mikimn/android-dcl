@@ -16,6 +16,10 @@ class DCLApplication : Application() {
                 permitUnsafeIntentLaunch()
             }
         }.build())
+
+        (classLoader as? FileTrackingClassLoader)?.let {
+            ActivityTaskManagerHook.install(it, packageName)
+        }
     }
 
     override fun attachBaseContext(base: Context) {
