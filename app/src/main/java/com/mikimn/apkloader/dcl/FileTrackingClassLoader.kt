@@ -39,8 +39,15 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
     fun ownerOf(className: String): LoadedApk? {
         for (loadedApk in loadedAPKFiles.values) {
             try {
-                loadedApk.loadClass(className)
-                return loadedApk
+                val resolved = loadedApk.loadClass(className)
+                // loadClass() delegates to the parent classloader first (standard Java
+                // parent-delegation), so it happily "resolves" platform/JDK classes too
+                // (e.g. dalvik.system.VMStack) via the shared boot classloader - that's
+                // not this APK's own code. Only count it as owned if this APK's own
+                // dex is what actually defined the class.
+                if (resolved.classLoader === loadedApk.loader) {
+                    return loadedApk
+                }
             } catch (_: ClassNotFoundException) {
                 // Left blank intentionally
             }
