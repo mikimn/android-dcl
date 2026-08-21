@@ -63,10 +63,12 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
 
             val splitApks = apkInstallDir?.let { discoverSplitApks(it) } ?: emptyList()
             val splitApkNativeDirs = mutableListOf<File>()
+            val splitApkOutputDirs = mutableListOf<File>()
             for (splitApk in splitApks) {
                 val outputDir = File(extractedApkDirectory, splitApk.name)
                 Zip.unzip(ZipFile(splitApk), outputDir)
                 splitApkNativeDirs.add(File(outputDir, "lib"))
+                splitApkOutputDirs.add(outputDir)
             }
 
             loader = buildClassLoader(extractedApkDirectory, splitApkNativeDirs + listOf(nativeLibsUncompressedDir), baseClassLoader)
@@ -87,6 +89,14 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             resources.addLoaders(ResourcesLoader().apply {
                 addProvider(buildResourceProvider(tempFile))
                 addProvider(buildResourceProviderFromDir(extractedApkDirectory))
+                // Config splits (e.g. split_config.xxxhdpi.apk) carry density/language/ABI-
+                // specific resources - such as bitmap drawables referenced from a base-APK
+                // drawable XML - that don't exist anywhere in the base APK itself. Without
+                // these, resolving such a resource ID throws Resources.NotFoundException.
+                for ((splitApk, outputDir) in splitApks.zip(splitApkOutputDirs)) {
+                    addProvider(buildResourceProvider(splitApk))
+                    addProvider(buildResourceProviderFromDir(outputDir))
+                }
             })
 
             manifestReader = manifestFile?.let { AndroidManifestReader(it.parentFile!!, FileInputStream(it), resources) }
