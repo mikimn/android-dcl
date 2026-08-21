@@ -43,8 +43,15 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
                 ?.filter { it.name == "lib" }
                 ?.firstOrNull()
 
+            // name is often a full device path (e.g. /data/app/~~.../base.apk) rather than a
+            // bare filename - File(parent, "cache-$name") would silently treat its embedded "/"
+            // as nested subdirectories instead of one flat cache dir per APK (confirmed
+            // on-device: this produced a shared top-level "cache-" directory containing a
+            // "data/app/~~.../..." tree, with every device-path-loaded APK's cache nested
+            // inside it rather than each getting its own directory).
+            val cacheDirName = "cache-" + name.replace(File.separatorChar, '_')
             var extractedApkDirectory = tempFile.parentFile!!
-            extractedApkDirectory = File(extractedApkDirectory, "cache-$name")
+            extractedApkDirectory = File(extractedApkDirectory, cacheDirName)
             // Clear any previous extraction for this name first: a re-test of the same
             // `name` (e.g. a bundled sample rebuilt with different content) must not leave
             // stale files from an older version of the APK lying around.
