@@ -135,6 +135,30 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
             }
         }
 
+        // Some apps (e.g. Duolingo, for seasonal/streak icon variants) launch through an
+        // <activity-alias> rather than a plain <activity> - the alias itself has no backing
+        // class, just a targetActivity pointing at a real, separately-declared <activity>.
+        // Only one alias is normally android:enabled="true" at a time.
+        val aliases = document.getElementsByTagName("activity-alias")
+
+        for (i in 0 until aliases.length) {
+            val node = aliases.item(i)
+            val enabled = node.attributes.getNamedItem("android:enabled")?.nodeValue != "false"
+            if (!enabled) continue
+
+            val aliasFilters = getChildrenByTagName(node, "intent-filter")
+            val hasMainAction = aliasFilters.any { filter ->
+                getChildrenByTagName(filter, "action").any {
+                    it.attributes.getNamedItem("android:name").nodeValue == "android.intent.action.MAIN"
+                }
+            }
+            if (!hasMainAction) continue
+
+            val targetActivity = node.attributes.getNamedItem("android:targetActivity")?.nodeValue
+                ?: continue
+            return parseActivities().find { it.first.name == targetActivity }?.first
+        }
+
         return null
     }
 
