@@ -33,7 +33,10 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             tempFile.writeBytes(data)
             tempFile.setReadOnly()
 
-            val apkInstallDir = File(name).parentFile ?: throw IllegalStateException("Bad APK at path $name")
+            // Only present when `name` is an absolute on-device path (e.g. an installed
+            // app's APK); bare asset names like "calculator.apk" have no parent directory
+            // to look for split APKs / uncompressed native libs alongside.
+            val apkInstallDir = File(name).parentFile
 
             val nativeLibsUncompressedDir = apkInstallDir
                 ?.listFiles { file, _ -> file.isDirectory }
@@ -42,12 +45,16 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
 
             var extractedApkDirectory = tempFile.parentFile!!
             extractedApkDirectory = File(extractedApkDirectory, "cache-$name")
+            // Clear any previous extraction for this name first: a re-test of the same
+            // `name` (e.g. a bundled sample rebuilt with different content) must not leave
+            // stale files from an older version of the APK lying around.
+            extractedApkDirectory.deleteRecursively()
             extractedApkDirectory.mkdirs()
 
             // Zip.unzip(ZipInputStream(tempFile.inputStream()), extractedApkDirectory)
             Zip.unzip(ZipFile(tempFile), extractedApkDirectory)
 
-            val splitApks = discoverSplitApks(apkInstallDir)
+            val splitApks = apkInstallDir?.let { discoverSplitApks(it) } ?: emptyList()
             val splitApkNativeDirs = mutableListOf<File>()
             for (splitApk in splitApks) {
                 val outputDir = File(extractedApkDirectory, splitApk.name)

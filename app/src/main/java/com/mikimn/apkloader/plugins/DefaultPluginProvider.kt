@@ -12,8 +12,7 @@ class DefaultPluginProvider : ContextPluginProvider {
     override fun providePackageManager(base: PackageManager): PackageManager {
         if (instance == null) {
             instance = PackageManagerAggregate(
-//            PlayServicesBlockingPackageManager(base), arrayOf(
-                base, arrayOf(
+                PlayServicesBlockingPackageManager(base), arrayOf(
                     DefaultPackageManagerPlugin(base)
                 )
             )
