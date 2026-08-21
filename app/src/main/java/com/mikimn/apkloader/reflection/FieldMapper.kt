@@ -28,10 +28,9 @@ object FieldMapper {
                             field.isAccessible = true
                             matchingField.isAccessible = true
                             val data = field.get(from)
-                            val originalData = matchingField.get(to)
-                            // if (predicate?.test(matchingField to originalData) != false && originalData == null) {
+                            if (predicate?.test(matchingField to data) != false) {
                                 matchingField.set(to, data)
-                            //}
+                            }
                         } catch (e: IllegalAccessException) {
                             e.printStackTrace()
                         }
