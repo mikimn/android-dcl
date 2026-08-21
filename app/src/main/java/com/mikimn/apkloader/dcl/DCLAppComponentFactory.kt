@@ -64,6 +64,15 @@ class DCLAppComponentFactory : CoreComponentFactory() {
             return super.instantiateActivity(cl, className, intent)
         }
 
+        if (DCLActivityProxyPool.isProxyClassName(className)) {
+            // ActivityTaskManagerHook already stashed the real target class/APK as
+            // intent extras before retargeting here - just host a plain DCLActivity,
+            // it reads those extras itself. No eager shadow-instantiation needed (and
+            // none possible: unlike instantiateDCLActivity's whitelist path below,
+            // there's no real compiled class named after a proxy pool slot).
+            return super.instantiateActivity(cl, DCLActivity::class.java.name, intent)
+        }
+
         return instantiateDCLActivity(cl, className, intent ?: Intent())
     }
 

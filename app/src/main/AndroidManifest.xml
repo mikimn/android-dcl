@@ -57,6 +57,21 @@
 
         </activity>
 
+        <!-- DCLActivityProxyPool: generic in-app-navigation targets. Each slot hosts a
+             real DCLActivity instance (see DCLAppComponentFactory.instantiateActivity)
+             for whichever loaded-APK activity ActivityTaskManagerHook retargets to it -
+             standard launchMode so each gets its own back-stack entry, unlike DCLActivity's
+             own singleTask entry above (kept for the existing intentForAPK entry-point
+             flow). Count must match DCLActivityProxyPool.SIZE. -->
+        <activity android:name=".dcl.DCLActivityProxy0" android:launchMode="standard" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxy1" android:launchMode="standard" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxy2" android:launchMode="standard" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxy3" android:launchMode="standard" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxy4" android:launchMode="standard" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxy5" android:launchMode="standard" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxy6" android:launchMode="standard" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxy7" android:launchMode="standard" android:exported="false" />
+
         <activity android:name="com.shazam.android.activities.ConfigurationActivity"
             android:exported="true">
             <intent-filter>

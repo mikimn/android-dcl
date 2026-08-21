@@ -42,9 +42,11 @@ class DCLActivity : ComponentActivity() {
     private var shadowActivity: Activity? = null
 
     companion object {
-        private const val KEY_ACTIVITY_CLASS = "activityClassName"
+        const val KEY_ACTIVITY_CLASS = "activityClassName"
         private const val KEY_APPLICATION_CLASS = "applicationClassName"
         const val KEY_APK_ASSET_FILE_NAME = "apkAssetFileName"
+        /** Set by [ActivityTaskManagerHook] when it retargets an intent to a proxy pool slot. */
+        const val KEY_LOADED_APK_NAME = "loadedApkName"
 
         fun intentForAPK(assetName: String): Intent {
             if (assetName.endsWith("base.apk") || assetName.startsWith("/system/")) {
@@ -119,6 +121,7 @@ class DCLActivity : ComponentActivity() {
 
         val loader = classLoader as FileTrackingClassLoader
         val apkAssetFileName = intent.getStringExtra(KEY_APK_ASSET_FILE_NAME)
+        val loadedApkName = intent.getStringExtra(KEY_LOADED_APK_NAME)
         val bContext = if (baseContext is DCLContext) baseContext as DCLContext else null
 
         val loadedApk = if (apkAssetFileName != null) {
@@ -142,6 +145,10 @@ class DCLActivity : ComponentActivity() {
             }
 
             loadedApk
+        } else if (loadedApkName != null) {
+            // In-app navigation to an already-loaded APK's own activity, retargeted
+            // through a DCLActivityProxyPool slot by ActivityTaskManagerHook.
+            loader.apkFile(loadedApkName)!!
         } else {
             loader.last!!
         }
