@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.Instrumentation
 import android.content.Context
 import android.content.ContextWrapper
+import android.util.Log
 import androidx.core.util.Predicate
 import com.mikimn.apkloader.dcl.DCLApplication
 import com.mikimn.apkloader.dcl.DCLContext
@@ -11,6 +12,7 @@ import com.mikimn.apkloader.reflection.FieldMapper
 import com.mikimn.apkloader.reflection.tryGetField
 import com.mikimn.apkloader.reflection.tryGetMethod
 import java.lang.reflect.Field
+import java.lang.reflect.InvocationTargetException
 
 object ShadowApplication {
     private fun fixPackageInfoDependency(context: Context, application: Application) {
@@ -70,6 +72,17 @@ object ShadowApplication {
 
     fun onCreate(application: Application) {
         val appOnCreate = application.javaClass.tryGetMethod("onCreate")
-        appOnCreate?.invoke(application)
+        try {
+            appOnCreate?.invoke(application)
+        } catch (e: InvocationTargetException) {
+            // Some apps' Application.onCreate() does early, non-essential setup - e.g.
+            // Google's own "Primes" telemetry init queries the real GservicesProvider,
+            // which requires the READ_GSERVICES signature permission that only a
+            // Google-signed app can legitimately hold. A loaded-but-not-installed app
+            // runs under our own host's real identity, so that permission check
+            // genuinely, unavoidably fails here regardless of our own virtualization -
+            // best effort not to let that early failure take down the whole process.
+            Log.e("ShadowApplication", "Application.onCreate() threw, continuing best-effort", e.targetException)
+        }
     }
 }
