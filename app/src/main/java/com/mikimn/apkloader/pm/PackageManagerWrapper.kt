@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.ChangedPackages
 import android.content.pm.FeatureInfo
+import android.content.pm.InstallSourceInfo
 import android.content.pm.InstrumentationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
@@ -57,6 +58,17 @@ open class PackageManagerWrapper(private val basePM: PackageManager) : PackageMa
             "loadItemIcon", PackageItemInfo::class.java, ApplicationInfo::class.java
         )
         return method?.invoke(basePM, itemInfo, appInfo) as? Drawable
+    }
+
+    // PackageManager's own default implementation just throws
+    // UnsupportedOperationException("getInstallSourceInfo not implemented") - unlike
+    // loadItemIcon above, this one *is* a normal public SDK method (added API 30), just never
+    // overridden here, so any caller (e.g. Google Mobile Ads' fraud-signal collection, which
+    // crashed loading an interstitial ad in a real installed app) hits that stub instead of
+    // the real PackageManager.
+    override fun getInstallSourceInfo(packageName: String): InstallSourceInfo {
+        logCurrentMethod(packageName)
+        return basePM.getInstallSourceInfo(packageName)
     }
 
     override fun getActivityInfo(p0: ComponentName, p1: Int): ActivityInfo {
