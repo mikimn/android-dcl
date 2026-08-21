@@ -24,6 +24,8 @@ complexity, using [`scripts/test-apk.sh`](../scripts/test-apk.sh). See
 | Clock (`com.oneplus.deskclock`) | `pm path` (`/product/app/Clock/Clock.apk`) | 4 | FAIL | 2026-08-21 | Crashes during provider init: a static initializer in one of its `ContentProvider`s (`SPContentProvider`) calls `Context.getPackageName()` on a null `Context`, before `attachInfo` even runs. Not fixed - the provider-init hardening below only catches exceptions from construction/`attachInfo` itself, not from a bad assumption baked into the provider's own static init. |
 | Breath Mode (`com.oneplus.brickmode`) | `pm path` | 4 | PARTIAL PASS | 2026-08-21 | **First real confirmation of generic multi-activity navigation**: the app's own onboarding flow called `startActivity` targeting `com.oneplus.brickmode.guide.GuideActivityNew` - a class never declared anywhere in our manifest - and `ActivityTaskManagerHook` retargeted it to `DCLActivityProxy0` automatically. Confirmed at the WindowManager/AMS level (not just app logs): the task genuinely reached `numActivities=2` with `topActivity=DCLActivityProxy0`, and both windows (`DCLActivity` and `.../GuideActivityNew`) got real `Displayed`/draw events. The process died shortly after with no Java or native crash signal in logcat - looks like an ordinary empty-task reclaim (plausibly `GuideActivityNew` calling `finish()` once it decides onboarding is already done, an ordinary pattern) rather than a bug in the new mechanism, but not conclusively ruled out. Also hit (and fixed, see below) a non-exported-provider crash from `SearchProvider`. |
 | Meme Generator (`com.zombodroid.MemeGenerator`) | `pm path` (split APK, launched from install dir) | 4 | PASS | 2026-08-21 | Was FAIL as of first testing this app (split APKs, R8-minified release, a heavy modern SDK stack: Firebase, Google Mobile Ads, Facebook Audience Network, Vungle, MLKit, Play Billing). The `FirebaseCrashlytics component is not present` crash - the real blocker - is now root-caused and fixed (see "Firebase Crashlytics: actually solved" below). Now reaches the app's own native UI (a self-tamper/installer-verification "Security error" dialog - a real, separate, expected-in-this-context check, not a bug). Screenshot-verified reproducible on a clean `pm clear` state. |
+| Android Remote (`androidtv.smart.tv.remote.control`) | `pm path` | 4 | PASS | 2026-08-22 | User-reported crash on launch: `UnsupportedOperationException: getInstallSourceInfo not implemented`, thrown from `PackageManager`'s own default method body (a real, non-hidden API added in API 30) while the Google Mobile Ads SDK collected fraud-prevention signals for an interstitial ad load. Same category as the earlier `loadItemIcon` fix - `PackageManagerWrapper` never overrode it, so it hit the base class's stub instead of delegating to the real `PackageManager`. Fixed with a direct `override` (a normal public method this time, no reflection needed). After the fix: launches cleanly through its own splash, multi-activity-navigates (via `ActivityTaskManagerHook`) into a real "Select Language" onboarding screen with correct content - screenshot-verified. Hit the known `pm clear`-between-different-apps cross-contamination issue once during verification (stale scheduled job from an earlier session), not a new bug. User then reported a SECOND crash reaching the settings page - see "Settings-page crash: two separate bugs" below for the full root-cause chain (a `FieldMapper` field-copy corruption bug and a missing split-APK resource-loading gap, both fixed). |
+| Android TV Remote (`com.google.android.tv.remote`) | `pm path` | 4 | PASS | 2026-08-22 | User-reported crash on open. Google's own official remote-control app - first real-world case of hitting a genuine OS-level signature-permission wall rather than an internal virtualization gap. See "Android TV Remote: a real permission wall, and one real permission gap" below for the full root-cause chain and fixes. After fixing: launches cleanly through Google's own ToS/onboarding flow, into the real device-scanning screen with live Bluetooth LE scanning active - screenshot-verified, process stayed alive throughout (no relaunch, no FATAL EXCEPTION). |
 
 ## Fixes made while establishing this baseline
 
@@ -313,6 +315,133 @@ real and shared across everything loaded into it.
 redundant for any app whose real manifest is readable this way (which is
 all of them) - left in place as a defensive fallback rather than removed,
 since it's harmless and never reached on the success path.
+
+## Settings-page crash: two separate bugs
+
+User report: tapping the settings gear in Android Remote crashed. Reproduced
+live, twice, with two different (non-deterministic - the third-party
+"Premium Helper" monetization SDK sometimes gates settings behind a paywall
+screen first) but equally real underlying bugs.
+
+### Bug 1: `FieldMapper.copy` was corrupting `Activity.mWindowAdded`
+
+[`DCLActivity`](../app/src/main/java/com/mikimn/apkloader/dcl/DCLActivity.kt)
+forwards every lifecycle callback (`onResume`, `onPostResume`, `onStop`,
+etc.) to the shadow (loaded-app) Activity instance via reflection, then
+calls `FieldMapper.copy(this, shadowActivity)` to sync state back onto the
+real, ActivityThread-tracked host Activity object -
+[`FieldMapper.copy`](../app/src/main/java/com/mikimn/apkloader/reflection/FieldMapper.kt)
+copies *every* same-name-and-type field across the whole class hierarchy,
+with zero filtering (a `predicate` parameter existed for exactly this
+purpose but its filtering logic was dead code - commented out).
+
+This includes `android.app.Activity`'s private `mWindowAdded` bookkeeping
+flag. Real `ActivityThread` machinery sets this to `true` right after
+`onResume()` returns and the decor view is actually added to the
+`WindowManager`. But `onPostResume()` - the *last* lifecycle callback in the
+resume sequence, called strictly after that real window-attachment already
+happened - runs our own `FieldMapper.copy` again, which stomps the host's
+just-set `true` back to the shadow's own `mWindowAdded` (which is
+permanently `false`, since nothing ever drives real window-attachment
+machinery on the shadow object itself). This happens on *every* resume of
+*every* app, but is invisible until the same already-window-added host
+`DCLActivity` instance is resumed a second time (e.g. returning from a
+child activity higher in the same task's back stack - closing the paywall
+screen, in this repro) - at which point `makeVisible()`'s
+`if (!mWindowAdded)` guard is bypassed and it tries to re-add the
+already-attached decor view: `IllegalStateException: View ... has already
+been added to the window manager`.
+
+Fixed by making the previously-dead `predicate` parameter on
+`FieldMapper.copy` actually filter, and excluding `mWindowAdded`
+specifically from both of `DCLActivity`'s lifecycle-state-sync call sites.
+
+### Bug 2: split-APK (App Bundle) resources were never loaded
+
+A *different* crash reproduction (tapping settings routed directly to the
+app's real `Setting` activity rather than through the paywall) hit
+`Resources$NotFoundException: Unable to find resource ID #0x7f08002b`
+while inflating a `SwitchCompat` widget - a bitmap drawable referenced from
+`abc_switch_thumb_material.xml` couldn't be resolved.
+
+Root cause: Android Remote is installed as a split APK bundle (`pm path`
+returns both `base.apk` and `split_config.xxxhdpi.apk`).
+[`LoadedApk.load()`](../app/src/main/java/com/mikimn/apkloader/apk/LoadedApk.kt)
+already discovered and extracted config splits (`discoverSplitApks`) - but
+only ever harvested their native-library directories for the class loader.
+Their *resources* were extracted to disk and then never registered as a
+`ResourcesProvider` - only the base APK's own resources were ever added to
+the `ResourcesLoader`. Android's build tooling had moved a density-specific
+bitmap variant into the xxxhdpi split, so that resource ID simply didn't
+exist anywhere our resource-loading pipeline looked.
+
+Fixed by registering each discovered split's resources (both
+`ResourcesProvider.loadFromApk` and `loadFromDirectory`, mirroring exactly
+what was already done for the base APK) onto the same `ResourcesLoader`.
+
+**Verified**: both fixes rebuilt, installed, and reproduced clean on a
+fresh `pm clear` state; full regression pass
+(`calculator.apk`/`simple.apk`/`flappy-bird-1-3.apk`) still passes.
+
+## Android TV Remote: a real permission wall, and one real permission gap
+
+User report: Google's own official Android TV Remote app crashed on open.
+This was the first app this session to hit a genuine Android OS-level
+permission enforcement point, rather than a gap in our own
+`PackageManager`/reflection virtualization layer - two distinct bugs found
+back to back.
+
+### A hard wall: `READ_GSERVICES` is signature-protected, unfixable by us
+
+`com.google.android.tv.remote.RemoteApplication.onCreate()` calls
+`initPrimes()` as its very first step - Google's internal "Primes"
+telemetry/crash-reporting library - which queries the real
+`GservicesProvider` system content provider. That provider requires
+`READ_GSERVICES`/`WRITE_GSERVICES`, a `signature`-protection-level
+permission grantable only to apps signed with Google's own certificate. A
+loaded-but-not-installed app runs under our host's real identity
+(`com.mikimn.apkloader`, not Google-signed), so this `SecurityException` is
+architecturally unavoidable - no PackageManager-layer fix can grant a
+signature permission the real OS wouldn't grant.
+
+It's also non-essential telemetry setup, unrelated to the app's real
+functionality, and Google's own defensive coding pattern here spawns a
+*second*, separate background thread (`Gservices$1.run()`, registering a
+`ContentObserver`) that hits the exact same wall - so a plain `try/catch`
+around the main-thread `Application.onCreate()` call in
+[`ShadowApplication.onCreate()`](../app/src/main/java/com/mikimn/apkloader/shadow/ShadowApplication.kt)
+wasn't enough on its own; that background thread's own uncaught exception
+still killed the whole process.
+
+Fixed with two complementary changes:
+- `ShadowApplication.onCreate()` now wraps the reflective
+  `Application.onCreate()` invocation in try/catch, logging and continuing
+  rather than propagating.
+- [`DCLApplication`](../app/src/main/java/com/mikimn/apkloader/dcl/DCLApplication.kt)
+  installs a process-wide `Thread.setDefaultUncaughtExceptionHandler` that
+  narrowly swallows *only* exceptions whose cause chain is specifically a
+  `SecurityException` with `"Permission Denial"` in the message - an
+  identifiable, unavoidable failure signature - and delegates everything
+  else (including real bugs in our own code) to the previous handler,
+  crashing normally and visibly exactly as before.
+
+### A real, fixable gap: missing `ACCESS_WIFI_STATE`
+
+Past the above, a *different* crash: `SecurityException: ... requires
+android.permission.ACCESS_WIFI_STATE`, from `WifiManager.getConnectionInfo()`
+inside the app's own ToS-acceptance button handler. Unlike `READ_GSERVICES`,
+this is a normal (non-dangerous, non-signature) permission - any app can
+freely declare it and the OS grants it automatically at install time. Our
+host app's own manifest just never declared it. Fixed by adding
+`<uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>` to
+[the host manifest](../app/src/main/AndroidManifest.xml).
+
+**Verified**: after both fixes, the app launches cleanly through Google's
+own ToS screen, the permissions-explanation screen, and into the real
+device-scanning screen with live Bluetooth LE scanning active - process
+stayed alive throughout (single PID, no relaunch, no `FATAL EXCEPTION` in
+logcat). Full regression pass
+(`calculator.apk`/`simple.apk`/`flappy-bird-1-3.apk`) still passes.
 
 ## How to add a new APK to this log
 
