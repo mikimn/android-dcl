@@ -1,40 +1,85 @@
 package com.mikimn.apkloader
 
-import android.app.Activity
-import android.app.Instrumentation
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.content.res.loader.ResourcesLoader
-import android.content.res.loader.ResourcesProvider
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
-import android.os.ParcelFileDescriptor.MODE_READ_ONLY
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import com.mikimn.apkloader.loader.ApkLoader
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mikimn.apkloader.dcl.DCLActivity
+import com.mikimn.apkloader.dcl.DCLContext
+import com.mikimn.apkloader.dcl.FileTrackingClassLoader
 import com.mikimn.apkloader.ui.theme.APKLoaderTheme
-import dalvik.system.BaseDexClassLoader
-import java.io.File
+
+
+data class APKEntryPoints(
+    val packageName: String,
+    val mainActivityClassName: String,
+    val applicationClassName: String?
+)
+
+
+val ENTRY_POINTS = mapOf(
+    // Single-activity apk
+    "calculator.apk" to APKEntryPoints(
+        "com.android.calculator2",
+        "com.android.calculator2.Calculator",
+        "com.android.calculator2.CalculatorApplication"
+    ),
+    // Simple debug compiled apk
+    "simple.apk" to APKEntryPoints(
+        "com.mikimn.simpleapp",
+        "com.mikimn.simpleapp.MainActivity",
+        null
+    ),
+    // Simple next activity hop
+    "flappy-bird-1-3.apk" to APKEntryPoints(
+        "com.dotgears.flappy",
+        "com.dotgears.flappy.SplashScreen",
+        null
+    )
+)
 
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        private val ACTIVITY_WHITELIST = arrayOf(
+            "com.dotgears.GameActivity",
+            "com.dotgears.flappy.SplashScreen",
+            "com.mikimn.simpleapp.MainActivity",
+            "com.android.calculator2.Calculator"
+        )
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(DCLContext(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -47,54 +92,26 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-}
 
-fun loadAttempt(context: Context, loader: ApkLoader) {
-    val mainActivity = loader.loadClass("com.android.calculator2.Calculator")
-    val tempApkFile = loader.tempPath
-    val baseClassLoader = context.classLoader
-    if (baseClassLoader is BaseDexClassLoader) {
-        val addDexPath =
-            baseClassLoader.javaClass.superclass.getDeclaredMethod("addDexPath", String::class.java)
-        addDexPath.isAccessible = true
-        addDexPath.invoke(baseClassLoader, tempApkFile)
-
-        val pfd = ParcelFileDescriptor.open(File(tempApkFile), MODE_READ_ONLY)
-        val rp = ResourcesProvider.loadFromApk(pfd)
-
-        val rl = ResourcesLoader()
-        rl.addProvider(rp)
-
-        val baseContext = (context as Activity).baseContext
-        val fMainThread = baseContext.javaClass.getDeclaredField("mMainThread")
-        fMainThread.isAccessible = true
-        val mMainThread = fMainThread.get(baseContext)
-
-        val fGetInstr = mMainThread.javaClass.getDeclaredMethod("getInstrumentation")
-        val instrumentation = fGetInstr.invoke(mMainThread) as Instrumentation
-
-        context.applicationContext.resources.addLoaders(rl)
-
-        try {
-            // val newApp = Instrumentation.newApplication(loader.loadClass("com.android.calculator2.CalculatorApplication"), context.applicationContext)
-            val intent = Intent(context, mainActivity).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-//                        `package` = "com.google.android.calculator"
-//                        component = ComponentName(context.packageName, "com.android.calculator2.Calculator")
-            }
-            // val activity = instrumentation.newActivity(baseClassLoader, "com.android.calculator2.Calculator", intent)
-            // context.applicationContext.startActivity(intent)
-        } catch (ex: ActivityNotFoundException) {
-            Log.e("MainActivity", "Success", ex)
+        if (classLoader is FileTrackingClassLoader) {
+            val loader = classLoader as FileTrackingClassLoader
+            loader.clearLast()
         }
     }
+
+    override fun startActivity(intent: Intent) {
+        if (intent.component?.className in ACTIVITY_WHITELIST) {
+            return super.startActivity(DCLActivity.forActivityClass(intent, intent.component?.className ?: ""))
+        }
+
+        super.startActivity(intent)
+    }
 }
 
-
 @Composable
-fun MainLayout(modifier: Modifier = Modifier ) {
+fun MainLayout(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val packageManager = context.packageManager
 
     Column(
         modifier = modifier
@@ -104,18 +121,61 @@ fun MainLayout(modifier: Modifier = Modifier ) {
         verticalArrangement = Arrangement.Center
     ) {
         Button(onClick = {
-            context.startActivity(DCLActivity.forApkAndActivityClass(context, "calculator.apk", "com.android.calculator2.Calculator"))
+            val intent = DCLActivity.intentForAPK("calculator.apk")
+            context.startActivity(intent)
         }) {
             Text(
                 text = "Load Calculator APK"
             )
         }
         Button(onClick = {
-            context.startActivity(DCLActivity.forApkAndActivityClass(context, "simple.apk", "com.mikimn.simpleapp.MainActivity"))
+            context.startActivity(DCLActivity.intentForAPK("flappy-bird-1-3.apk"))
+        }) {
+            Text(
+                text = "Load Flappy APK"
+            )
+        }
+        Button(onClick = {
+            context.startActivity(DCLActivity.intentForAPK("simple.apk"))
         }) {
             Text(
                 text = "Load Simple APK"
             )
+        }
+
+        LazyVerticalGrid(
+            modifier = Modifier,
+            contentPadding = PaddingValues(8.dp),
+            columns = GridCells.Fixed(2),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(
+                packageManager
+                    .getInstalledApplications(0)
+                    .filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
+                    .filter { it.name != null && it.name.contains("duck") }) { aInfo ->
+                Box(
+                    modifier = Modifier.padding(0.dp)
+                ) {
+                    Card(
+                        modifier = Modifier,
+                        onClick = {
+                            context.startActivity(DCLActivity.intentForAPK(aInfo.publicSourceDir))
+                        }) {
+                        Column(
+                            modifier = Modifier.padding(6.dp),
+                        ) {
+                            Text(
+                                aInfo.loadLabel(packageManager).toString(),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp
+                            )
+                            Text(aInfo.packageName)
+                        }
+                    }
+                }
+            }
         }
     }
 }

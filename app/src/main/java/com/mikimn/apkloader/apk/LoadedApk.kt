@@ -1,0 +1,122 @@
+package com.mikimn.apkloader.apk
+
+import android.content.res.Resources
+import android.content.res.loader.ResourcesLoader
+import android.content.res.loader.ResourcesProvider
+import android.os.ParcelFileDescriptor
+import android.os.ParcelFileDescriptor.MODE_READ_ONLY
+import com.mikimn.apkloader.reflection.tryGetMethod
+import com.mikimn.apkloader.utils.Zip
+import dalvik.system.InMemoryDexClassLoader
+import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.util.zip.ZipFile
+
+class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
+    var loader: ClassLoader? = null
+    var resourcesProvider: ResourcesProvider? = null
+    var manifestReader: AndroidManifestReader? = null
+
+    private fun discoverSplitApks(baseDir: File): List<File> {
+        return baseDir.listFiles { dir, name ->
+            name.startsWith("split_config") && name.endsWith("apk")
+        }
+            ?.toList() ?: emptyList()
+    }
+
+    // TODO support load from assets
+    fun load(data: ByteArray, resources: Resources) {
+        var tempFile: File? = null
+        try {
+            tempFile = File.createTempFile("temp", ".apk")
+            tempFile.writeBytes(data)
+            tempFile.setReadOnly()
+
+            val apkInstallDir = File(name).parentFile ?: throw IllegalStateException("Bad APK at path $name")
+
+            val nativeLibsUncompressedDir = apkInstallDir
+                ?.listFiles { file, _ -> file.isDirectory }
+                ?.filter { it.name == "lib" }
+                ?.firstOrNull()
+
+            var extractedApkDirectory = tempFile.parentFile!!
+            extractedApkDirectory = File(extractedApkDirectory, "cache-$name")
+            extractedApkDirectory.mkdirs()
+
+            // Zip.unzip(ZipInputStream(tempFile.inputStream()), extractedApkDirectory)
+            Zip.unzip(ZipFile(tempFile), extractedApkDirectory)
+
+            val splitApks = discoverSplitApks(apkInstallDir)
+            val splitApkNativeDirs = mutableListOf<File>()
+            for (splitApk in splitApks) {
+                val outputDir = File(extractedApkDirectory, splitApk.name)
+                Zip.unzip(ZipFile(splitApk), outputDir)
+                splitApkNativeDirs.add(File(outputDir, "lib"))
+            }
+
+            loader = buildClassLoader(extractedApkDirectory, splitApkNativeDirs + listOf(nativeLibsUncompressedDir), baseClassLoader)
+
+            // TODO Move inside buildClassLoader
+            // Should fix `Module with the Main dispatcher is missing. Add dependency providing the Main dispatcher, e.g. 'kotlinx-coroutines-android ...`
+            //    This is because of the way ServiceLoaded uses Class.classLoader explicitly, which is provided when the class is first initiated, and the
+            //    way META-INF directory is resolved from the BaseDexClassLoader
+            val addDexPath = loader!!::class.java.tryGetMethod("addDexPath", String::class.java)
+            addDexPath?.isAccessible = true
+            addDexPath?.invoke(loader!!, extractedApkDirectory.absolutePath)
+
+            resourcesProvider = buildResourceProvider(tempFile)
+            val manifestFile = extractedApkDirectory
+                .listFiles { f -> f.name == "AndroidManifest.xml" }
+                ?.firstOrNull()
+
+            resources.addLoaders(ResourcesLoader().apply {
+                addProvider(buildResourceProvider(tempFile))
+                addProvider(buildResourceProviderFromDir(extractedApkDirectory))
+            })
+
+            manifestReader = manifestFile?.let { AndroidManifestReader(it.parentFile!!, FileInputStream(it), resources) }
+
+        } finally {
+            tempFile?.delete()
+        }
+    }
+
+    private fun buildClassLoader(
+        extractedApkDirectory: File,
+        nativeLibsUncompressedDirs: List<File?>,
+        baseClassLoader: ClassLoader
+    ): ClassLoader {
+        val dexFiles = extractedApkDirectory.listFiles { f -> f.extension == "dex" }
+
+        if (dexFiles == null) {
+            throw IllegalStateException("Could not list files from extracted APK at ${extractedApkDirectory.path}")
+        }
+
+        val dexBuffers = dexFiles.map { dexFile ->
+            dexFile.setReadOnly()
+            ByteBuffer.wrap(dexFile.readBytes())
+        }.toTypedArray()
+
+        val allLibPaths = nativeLibsUncompressedDirs.mapNotNull { file ->
+            file?.absolutePath + File.pathSeparator + (file?.listFiles()
+                ?.joinToString(File.pathSeparator) { it.absolutePath } ?: "")
+        }.joinToString(File.pathSeparator)
+
+        return InMemoryDexClassLoader(dexBuffers, allLibPaths, baseClassLoader)
+    }
+
+    private fun buildResourceProvider(apkFile: File): ResourcesProvider {
+        val pfd = ParcelFileDescriptor.open(apkFile, MODE_READ_ONLY)
+        val rp = ResourcesProvider.loadFromApk(pfd)
+        return rp
+    }
+
+    private fun buildResourceProviderFromDir(extractedApkDirectory: File): ResourcesProvider {
+        return ResourcesProvider.loadFromDirectory(extractedApkDirectory.absolutePath, null)
+    }
+
+    fun loadClass(name: String): Class<*> {
+        return loader?.loadClass(name) ?: throw IllegalStateException("Call load(ByteArray) before using LoadedApk")
+    }
+}
