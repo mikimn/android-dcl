@@ -20,7 +20,7 @@ complexity, using [`scripts/test-apk.sh`](../scripts/test-apk.sh). See
 | --- | --- | --- | --- | --- | --- |
 | `simple.apk` | bundled asset | 1 | PASS | 2026-08-19 | Renders and retains click-count state correctly. |
 | `calculator.apk` | bundled asset | 1 | PASS | 2026-08-19 | Fixed by the `LoadedApk.load()` null-parent bug below; renders and computes correctly. |
-| `flappy-bird-1-3.apk` | bundled asset | 3 | FAIL | 2026-08-19 | Splash → GameActivity navigation works (whitelist redirect OK), but the bundled legacy (~2014) Play Games Services SDK does a binder-level round-trip to the real on-device GMS, which rejects the shadow-hosted package/signature identity with `IllegalStateException: A fatal developer error has occurred` (`com.google.android.gms.internal.cw/ct/cs`). Re-enabling `PlayServicesBlockingPackageManager` (see below) did not help - it only blocks `getPackageInfo`-based checks, not this SDK's direct binder communication. Likely needs the SDK's Games-client init call itself intercepted/no-op'd, not a PackageManager-level fix. Tracked, not solved this round. |
+| `flappy-bird-1-3.apk` | bundled asset | 3 | PASS | 2026-08-21 | Was FAIL as of 2026-08-19 (see "Fixes" below for the full root-cause chain: three separate bugs, all now fixed). Splash → GameActivity navigation, the actual menu screen, sprites and background now render correctly and stay stable (screenshot-verified, no flicker, process alive after a settle period). |
 | Clock (`com.oneplus.deskclock`) | `pm path` (`/product/app/Clock/Clock.apk`) | 4 | FAIL | 2026-08-21 | Crashes during provider init: a static initializer in one of its `ContentProvider`s (`SPContentProvider`) calls `Context.getPackageName()` on a null `Context`, before `attachInfo` even runs. Not fixed - the provider-init hardening below only catches exceptions from construction/`attachInfo` itself, not from a bad assumption baked into the provider's own static init. |
 | Breath Mode (`com.oneplus.brickmode`) | `pm path` | 4 | PARTIAL PASS | 2026-08-21 | **First real confirmation of generic multi-activity navigation**: the app's own onboarding flow called `startActivity` targeting `com.oneplus.brickmode.guide.GuideActivityNew` - a class never declared anywhere in our manifest - and `ActivityTaskManagerHook` retargeted it to `DCLActivityProxy0` automatically. Confirmed at the WindowManager/AMS level (not just app logs): the task genuinely reached `numActivities=2` with `topActivity=DCLActivityProxy0`, and both windows (`DCLActivity` and `.../GuideActivityNew`) got real `Displayed`/draw events. The process died shortly after with no Java or native crash signal in logcat - looks like an ordinary empty-task reclaim (plausibly `GuideActivityNew` calling `finish()` once it decides onboarding is already done, an ordinary pattern) rather than a bug in the new mechanism, but not conclusively ruled out. Also hit (and fixed, see below) a non-exported-provider crash from `SearchProvider`. |
 
@@ -84,6 +84,49 @@ The fix, confirmed working against a real app (Breath Mode, above):
 Pool is fixed at 8 slots, round-robin allocated (no reuse-on-finish
 tracking yet) - fine for shallow navigation depth, would need real
 slot lifecycle management for deep/long-lived back stacks.
+
+## flappy-bird-1-3.apk: FAIL → PASS (three separate bugs)
+
+Root-caused by decompiling the APK with `apktool` rather than guessing from
+the obfuscated stack traces - each fix is small and targeted once the actual
+cause was known:
+
+1. **The Play Games Services crash.** `GameActivity` (via AndEngine's
+   `SimpleBaseGameActivity` → `BaseGameActivity`) owns its own bundled
+   `com.google.example.games.basegameutils.a` (Google's public 2014-era
+   `GameHelper` sample class) and calls its `onStart()` unconditionally, which
+   auto-connects to Play Games unless `setConnectOnStart(false)` was called -
+   which this app's code never does. A loaded-but-not-installed app can't
+   legitimately authenticate as `com.dotgears.flappybird`'s registered
+   identity, so Play Services always rejects it with `IllegalStateException:
+   A fatal developer error has occurred`, thrown asynchronously on the main
+   thread. Fixed in `DCLActivity.disableAutoGameSignIn()`: after
+   `callActivityOnCreate`, it structurally finds the `GameHelper` instance
+   (searching the activity's own class hierarchy's declared fields for one
+   typed `com.google.example.games.basegameutils.a`, since different apps'
+   activities own the field under different obfuscated names) and flips its
+   `l` field (the obfuscated `mConnectOnStart`) to `false`. Necessarily a
+   one-off, app-specific patch (matching the existing `MlKitInitProvider`
+   special-case) - the field name is specific to this exact compiled build.
+2. **The Ads SDK warning banner.** `com.google.ads.AdActivity` was already
+   present in `AndroidManifest.xml` but commented out. Just needed
+   uncommenting.
+3. **The real root cause of the black-screen/flicker**:
+   [`DCLContext.getResources()`](../app/src/main/java/com/mikimn/apkloader/dcl/DCLContext.kt)
+   built a **brand-new** anonymous `Resources` wrapper on every single call,
+   with no caching - breaking the normal `Context` contract that
+   `getResources()` returns a stable identity. Any `ResourcesLoader` attached
+   elsewhere (`DCLActivity.initResourceLoader`'s
+   `baseContext.resources.addLoaders(...)`) was silently discarded the moment
+   anything else called `.resources` again, which native framework code does
+   constantly. Symptom: `Resources$NotFoundException: Resource ID
+   #0x7f040000` (`R.raw.atlas`, the game's sprite atlas, per `apktool`'s
+   decoded `public.xml`) from AndEngine's GL thread - `onCreateScene` caught
+   the exception internally (no crash), but with no atlas the GL thread kept
+   rendering an incompletely-initialized scene every frame, which is what
+   surfaced as violent screen flicker rather than a clean black screen. Fixed
+   by caching the wrapped `Resources` instance instead of rebuilding it per
+   call.
 
 ## How to add a new APK to this log
 
