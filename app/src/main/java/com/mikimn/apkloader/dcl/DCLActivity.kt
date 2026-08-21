@@ -42,9 +42,11 @@ class DCLActivity : ComponentActivity() {
     private var shadowActivity: Activity? = null
 
     companion object {
-        private const val KEY_ACTIVITY_CLASS = "activityClassName"
+        const val KEY_ACTIVITY_CLASS = "activityClassName"
         private const val KEY_APPLICATION_CLASS = "applicationClassName"
         const val KEY_APK_ASSET_FILE_NAME = "apkAssetFileName"
+        /** Set by [ActivityTaskManagerHook] when it retargets an intent to a proxy pool slot. */
+        const val KEY_LOADED_APK_NAME = "loadedApkName"
 
         fun intentForAPK(assetName: String): Intent {
             if (assetName.endsWith("base.apk") || assetName.startsWith("/system/")) {
@@ -119,6 +121,7 @@ class DCLActivity : ComponentActivity() {
 
         val loader = classLoader as FileTrackingClassLoader
         val apkAssetFileName = intent.getStringExtra(KEY_APK_ASSET_FILE_NAME)
+        val loadedApkName = intent.getStringExtra(KEY_LOADED_APK_NAME)
         val bContext = if (baseContext is DCLContext) baseContext as DCLContext else null
 
         val loadedApk = if (apkAssetFileName != null) {
@@ -142,6 +145,10 @@ class DCLActivity : ComponentActivity() {
             }
 
             loadedApk
+        } else if (loadedApkName != null) {
+            // In-app navigation to an already-loaded APK's own activity, retargeted
+            // through a DCLActivityProxyPool slot by ActivityTaskManagerHook.
+            loader.apkFile(loadedApkName)!!
         } else {
             loader.last!!
         }
@@ -176,15 +183,23 @@ class DCLActivity : ComponentActivity() {
         val providers = manifestReader?.getProviders() ?: emptyList()
 
         for (providerInfo in providers) {
-            val providerClass = loader.loadClass(providerInfo.name)
-            val provider = providerClass.getDeclaredConstructor().newInstance() as ContentProvider
+            try {
+                val providerClass = loader.loadClass(providerInfo.name)
+                val provider = providerClass.getDeclaredConstructor().newInstance() as ContentProvider
 
-            // TODO(@mikimn): Remove, replace with general provider resolver
-            if (!providerInfo.name.contains("MlKitInitProvider")) {
-                provider.attachInfo(baseContext, providerInfo)
-                // Should not be called, because attachInfo already does that
-                //  https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/content/ContentProvider.java;l=2649;drc=61197364367c9e404c7da6900658f1b16c42d0da
-                // provider.onCreate()
+                // TODO(@mikimn): Remove, replace with general provider resolver
+                if (!providerInfo.name.contains("MlKitInitProvider")) {
+                    provider.attachInfo(baseContext, providerInfo)
+                    // Should not be called, because attachInfo already does that
+                    //  https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/content/ContentProvider.java;l=2649;drc=61197364367c9e404c7da6900658f1b16c42d0da
+                    // provider.onCreate()
+                }
+            } catch (e: Throwable) {
+                // Best effort: a provider that can't attach in the shadowed environment
+                // (e.g. a non-exported provider's own export check, or a static
+                // initializer assuming a real installed-app Context) shouldn't take
+                // down the whole activity load.
+                Log.e("DCLActivity", "Failed to initialize provider ${providerInfo.name}", e)
             }
         }
 
