@@ -10,6 +10,7 @@ import android.content.pm.FeatureInfo
 import android.content.pm.InstrumentationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
+import android.content.pm.PackageItemInfo
 import android.content.pm.PackageManager
 import android.content.pm.PermissionGroupInfo
 import android.content.pm.PermissionInfo
@@ -40,6 +41,22 @@ open class PackageManagerWrapper(private val basePM: PackageManager) : PackageMa
     fun getPermissionControllerPackageName(): String {
         val ret = basePM.javaClass.tryGetMethod("getPermissionControllerPackageName")?.invoke(basePM)
         return (ret ?: "") as String
+    }
+
+    // PackageItemInfo.loadIcon()/loadUnbadgedIcon() call this internally
+    // (PackageManager.loadItemIcon/loadUnbadgedItemIcon) - it's a hidden/system API absent from
+    // the compileSdk stub, so PackageManagerWrapper (extends the real, abstract PackageManager)
+    // was never forced to implement it, and nothing exercised it until the main screen started
+    // rendering real app icons via ApplicationInfo.loadIcon(). Without this, any such call hits
+    // the framework's own abstract method with no override -> AbstractMethodError. Same fix
+    // shape as getPermissionControllerPackageName above: reflect it onto the real PackageManager.
+    @Suppress("unused")
+    fun loadItemIcon(itemInfo: PackageItemInfo, appInfo: ApplicationInfo?): Drawable? {
+        logCurrentMethod(itemInfo, appInfo ?: "null")
+        val method = basePM.javaClass.tryGetMethod(
+            "loadItemIcon", PackageItemInfo::class.java, ApplicationInfo::class.java
+        )
+        return method?.invoke(basePM, itemInfo, appInfo) as? Drawable
     }
 
     override fun getActivityInfo(p0: ComponentName, p1: Int): ActivityInfo {
