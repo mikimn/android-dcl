@@ -223,8 +223,14 @@ class DCLActivity : ComponentActivity() {
         val newAppInfo = ApplicationInfo(applicationInfo)
         appInfo?.let { FieldMapper.copy(newAppInfo, it) }
 
+        // Reuse the same shadow Application instance across every proxy-pool slot for
+        // this loaded APK - see LoadedApk.shadowApplication for why a fresh one per
+        // activity is wrong, not just wasteful.
+        val isNewShadowApp = loadedApk.shadowApplication == null
         val shadowApp = applicationClassName?.let {
-            ShadowApplication.createShadowApplication(loader, it, application, baseContext)
+            loadedApk.shadowApplication
+                ?: ShadowApplication.createShadowApplication(loader, it, application, baseContext)
+                    .also { created -> loadedApk.shadowApplication = created }
         }
 
         val ht = HandlerThread("Emulator")
@@ -249,7 +255,9 @@ class DCLActivity : ComponentActivity() {
 
             shadowApp?.let {
                 bContext?.setShadowApplication(it)
-                ShadowApplication.onCreate(it)
+                if (isNewShadowApp) {
+                    ShadowApplication.onCreate(it)
+                }
             }
 
             runOnUiThread {
