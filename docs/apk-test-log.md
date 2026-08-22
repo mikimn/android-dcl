@@ -497,6 +497,31 @@ throwing. Not yet root-caused; would likely require decompiling Duolingo's
 (large, R8-minified) `LaunchActivity` to trace exactly what it's waiting
 on.
 
+## Declaring every android.permission.* constant defensively
+
+Both Android Remote's `ACCESS_WIFI_STATE` gap and (architecturally, if not
+fixably) Android TV Remote's `READ_GSERVICES` wall are instances of the
+same root pattern: a loaded app calls a permission-gated system API
+expecting its own manifest's permissions to apply, but the OS checks the
+REAL, installed caller's (this host's) granted permissions instead. Rather
+than waiting to hit each gap one crash at a time, declared every public
+`android.permission.*` constant from the compileSdk 34 platform (extracted
+authoritatively via `javap -constants` against `android-34/android.jar`'s
+`Manifest$permission` class, not from memory) as a `<uses-permission>` in
+[the host manifest](../app/src/main/AndroidManifest.xml) - 277 of the 310
+total, excluding the 33 `BIND_*` permissions (these protect service
+*components* a caller binds to, not something a calling app itself holds,
+so declaring them here would be meaningless).
+
+This only closes the manifest-declaration gap - it doesn't change what the
+OS actually grants. Verified via `dumpsys package`: all 277 parsed
+successfully, with 77 normal-protection-level ones auto-granted at install
+as expected; dangerous, signature, and special-access permissions
+correctly remain ungranted (those still need a real runtime grant, a
+platform signing certificate, or an explicit Settings toggle - none of
+which a manifest declaration alone can produce). Full regression pass
+(`calculator.apk`/`simple.apk`/`flappy-bird-1-3.apk`) still passes.
+
 ## How to add a new APK to this log
 
 ```bash
