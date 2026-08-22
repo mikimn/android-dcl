@@ -1,5 +1,6 @@
 package com.mikimn.apkloader.apk
 
+import android.app.Application
 import android.content.res.Resources
 import android.content.res.loader.ResourcesLoader
 import android.content.res.loader.ResourcesProvider
@@ -17,6 +18,16 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
     var loader: ClassLoader? = null
     var resourcesProvider: ResourcesProvider? = null
     var manifestReader: AndroidManifestReader? = null
+
+    // A real Android process has exactly one Application instance for its whole
+    // lifetime, shared across every Activity. DCLActivity.onCreate() runs once per
+    // proxy-pool slot (i.e. once per in-app navigation hop), so without caching it
+    // here, each hop would spin up a brand-new shadow Application - and call its
+    // onCreate() again. Apps that initialize a singleton resource keyed by an
+    // on-disk path in Application.onCreate() (e.g. a Jetpack DataStore) then throw,
+    // since two "active" instances for the same file trip the library's own
+    // duplicate-instance safety check.
+    var shadowApplication: Application? = null
 
     private fun discoverSplitApks(baseDir: File): List<File> {
         return baseDir.listFiles { dir, name ->

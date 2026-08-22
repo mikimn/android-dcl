@@ -27,6 +27,56 @@ complexity, using [`scripts/test-apk.sh`](../scripts/test-apk.sh). See
 | Android Remote (`androidtv.smart.tv.remote.control`) | `pm path` | 4 | PASS | 2026-08-22 | User-reported crash on launch: `UnsupportedOperationException: getInstallSourceInfo not implemented`, thrown from `PackageManager`'s own default method body (a real, non-hidden API added in API 30) while the Google Mobile Ads SDK collected fraud-prevention signals for an interstitial ad load. Same category as the earlier `loadItemIcon` fix - `PackageManagerWrapper` never overrode it, so it hit the base class's stub instead of delegating to the real `PackageManager`. Fixed with a direct `override` (a normal public method this time, no reflection needed). After the fix: launches cleanly through its own splash, multi-activity-navigates (via `ActivityTaskManagerHook`) into a real "Select Language" onboarding screen with correct content - screenshot-verified. Hit the known `pm clear`-between-different-apps cross-contamination issue once during verification (stale scheduled job from an earlier session), not a new bug. User then reported a SECOND crash reaching the settings page - see "Settings-page crash: two separate bugs" below for the full root-cause chain (a `FieldMapper` field-copy corruption bug and a missing split-APK resource-loading gap, both fixed). |
 | Android TV Remote (`com.google.android.tv.remote`) | `pm path` | 4 | PASS | 2026-08-22 | User-reported crash on open. Google's own official remote-control app - first real-world case of hitting a genuine OS-level signature-permission wall rather than an internal virtualization gap. See "Android TV Remote: a real permission wall, and one real permission gap" below for the full root-cause chain and fixes. After fixing: launches cleanly through Google's own ToS/onboarding flow, into the real device-scanning screen with live Bluetooth LE scanning active - screenshot-verified, process stayed alive throughout (no relaunch, no FATAL EXCEPTION). |
 | Duolingo (`com.duolingo`) | `pm path` (split APK, incl. an ABI-specific `split_config.arm64_v8a.apk` native-lib split) | 4 | PARTIAL PASS | 2026-08-22 | User-reported crash with "an interesting exception". See "Duolingo: activity-alias launcher resolution" below for the root cause (fixed) and the new blank-screen hang found past it (not yet fixed). |
+| GitHub (`com.github.android`) | `pm path` (split APK) | 4 | PASS | 2026-08-22 | User-reported crash "related to DataStore" while navigating in-app (splash → `SimplifiedLoginActivity`, via `ActivityTaskManagerHook`). Same root cause as Chess below - see "Duplicate shadow Application instances" below. After the fix: reaches the real "Sign in to GitHub.com" screen - screenshot-verified, no exception, process stable. |
+| Chess (`com.chess`) | `pm path` (split APK) | 4 | PASS | 2026-08-22 | User-reported crash "related to DataStore", same underlying bug as GitHub above. Reproduced its own in-app navigation hop (splash → `SignupActivity`) cleanly after the fix - zero exceptions, process stayed alive. |
+
+## Duplicate shadow Application instances (GitHub, Chess)
+
+User report: GitHub and Chess both crash with "similar exceptions related
+to DataStore" during in-app navigation. Reproduced on GitHub first:
+
+```
+java.lang.IllegalStateException: There are multiple DataStores active for
+the same file: /data/data/com.mikimn.apkloader/files/datastore/
+app_lock.preferences_pb. You should either maintain your DataStore as a
+singleton or confirm that there is no two DataStore's active on the same
+file (by confirming that the scope is cancelled).
+```
+
+thrown while navigating from GitHub's splash screen into
+`com.github.android.auth.SimplifiedLoginActivity` (a `DCLActivityProxyPool`
+slot, i.e. an in-app navigation hop retargeted by `ActivityTaskManagerHook`).
+
+Root cause: a real Android process has exactly one `Application` instance
+for its entire lifetime, shared across every Activity - but
+[`DCLActivity.onCreate()`](../app/src/main/java/com/mikimn/apkloader/dcl/DCLActivity.kt)
+called `ShadowApplication.createShadowApplication()` and
+`ShadowApplication.onCreate()` unconditionally, on *every* activity
+creation. Since each in-app navigation hop through the proxy pool creates a
+brand-new `DCLActivity`-derived instance, every single hop spun up (and ran
+`onCreate()` on) a **second, orphaned** copy of the target app's own
+`Application` subclass. GitHub's `Application.onCreate()` initializes a
+Jetpack DataStore singleton (matching the `app_lock.preferences_pb` file
+name); the second instance's DataStore construction trips the library's
+own duplicate-active-instance safety check. `DCLContext.shadowApp` was
+already documented as companion-object (process-wide singleton) state -
+this was a case of the singleton *pointer* being correct while the
+*objects* it got assigned were being needlessly, harmfully re-created
+before each reassignment, with real, already-executed `onCreate()` side
+effects along the way.
+
+Fixed by caching the created shadow `Application` on
+[`LoadedApk`](../app/src/main/java/com/mikimn/apkloader/apk/LoadedApk.kt)
+(keyed to the already-existing per-loaded-APK object) and reusing it -
+along with skipping the redundant `onCreate()` call - for every subsequent
+`DCLActivity`/proxy-pool activity belonging to the same loaded APK.
+
+**Verified**: reproduced the exact GitHub crash live before the fix,
+confirmed it's gone after (reaches the real "Sign in to GitHub.com"
+screen, screenshot-verified). Independently confirmed the identical fix
+resolves Chess's own in-app navigation hop (splash → `SignupActivity`)
+with zero exceptions. Full regression pass
+(`calculator.apk`/`simple.apk`/`flappy-bird-1-3.apk`) still passes.
 
 ## Fixes made while establishing this baseline
 
