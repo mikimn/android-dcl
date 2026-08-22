@@ -28,9 +28,16 @@ class DCLContext(base: Context, private val pluginProvider: ContextPluginProvide
         return service?.component
     }
 
-    //    override fun getPackageName(): String {
-//        return shadowPackageName ?: super.getPackageName()
-//    }
+    // Only spoof the package name for callers that are the loaded APK's own code - real
+    // OS-level subsystems (WebView among them, confirmed on-device) rely on getPackageName()
+    // returning the host's actual, installed identity and break if lied to unconditionally.
+    // See docs/apk-test-log.md's "Meme Generator" research notes for how this was derived.
+    override fun getPackageName(): String {
+        val shadow = shadowPackageName ?: return super.getPackageName()
+        val loader = classLoader as? FileTrackingClassLoader ?: return super.getPackageName()
+        val callerClassName = CallerClassResolver.findRealCallerClassName() ?: return super.getPackageName()
+        return if (loader.ownerOf(callerClassName) != null) shadow else super.getPackageName()
+    }
 
     private var cachedResources: Resources? = null
 
