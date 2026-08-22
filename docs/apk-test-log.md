@@ -26,6 +26,7 @@ complexity, using [`scripts/test-apk.sh`](../scripts/test-apk.sh). See
 | Meme Generator (`com.zombodroid.MemeGenerator`) | `pm path` (split APK, launched from install dir) | 4 | PASS | 2026-08-21 | Was FAIL as of first testing this app (split APKs, R8-minified release, a heavy modern SDK stack: Firebase, Google Mobile Ads, Facebook Audience Network, Vungle, MLKit, Play Billing). The `FirebaseCrashlytics component is not present` crash - the real blocker - is now root-caused and fixed (see "Firebase Crashlytics: actually solved" below). Now reaches the app's own native UI (a self-tamper/installer-verification "Security error" dialog - a real, separate, expected-in-this-context check, not a bug). Screenshot-verified reproducible on a clean `pm clear` state. |
 | Android Remote (`androidtv.smart.tv.remote.control`) | `pm path` | 4 | PASS | 2026-08-22 | User-reported crash on launch: `UnsupportedOperationException: getInstallSourceInfo not implemented`, thrown from `PackageManager`'s own default method body (a real, non-hidden API added in API 30) while the Google Mobile Ads SDK collected fraud-prevention signals for an interstitial ad load. Same category as the earlier `loadItemIcon` fix - `PackageManagerWrapper` never overrode it, so it hit the base class's stub instead of delegating to the real `PackageManager`. Fixed with a direct `override` (a normal public method this time, no reflection needed). After the fix: launches cleanly through its own splash, multi-activity-navigates (via `ActivityTaskManagerHook`) into a real "Select Language" onboarding screen with correct content - screenshot-verified. Hit the known `pm clear`-between-different-apps cross-contamination issue once during verification (stale scheduled job from an earlier session), not a new bug. User then reported a SECOND crash reaching the settings page - see "Settings-page crash: two separate bugs" below for the full root-cause chain (a `FieldMapper` field-copy corruption bug and a missing split-APK resource-loading gap, both fixed). |
 | Android TV Remote (`com.google.android.tv.remote`) | `pm path` | 4 | PASS | 2026-08-22 | User-reported crash on open. Google's own official remote-control app - first real-world case of hitting a genuine OS-level signature-permission wall rather than an internal virtualization gap. See "Android TV Remote: a real permission wall, and one real permission gap" below for the full root-cause chain and fixes. After fixing: launches cleanly through Google's own ToS/onboarding flow, into the real device-scanning screen with live Bluetooth LE scanning active - screenshot-verified, process stayed alive throughout (no relaunch, no FATAL EXCEPTION). |
+| Duolingo (`com.duolingo`) | `pm path` (split APK, incl. an ABI-specific `split_config.arm64_v8a.apk` native-lib split) | 4 | PARTIAL PASS | 2026-08-22 | User-reported crash with "an interesting exception". See "Duolingo: activity-alias launcher resolution" below for the root cause (fixed) and the new blank-screen hang found past it (not yet fixed). |
 
 ## Fixes made while establishing this baseline
 
@@ -442,6 +443,59 @@ device-scanning screen with live Bluetooth LE scanning active - process
 stayed alive throughout (single PID, no relaunch, no `FATAL EXCEPTION` in
 logcat). Full regression pass
 (`calculator.apk`/`simple.apk`/`flappy-bird-1-3.apk`) still passes.
+
+## Duolingo: activity-alias launcher resolution
+
+User report: opening Duolingo crashed with "an interesting exception" -
+`IllegalArgumentException: DCLActivity must be initialized with
+forActivityClass only`, thrown from our own null-check in
+[`DCLActivity.onCreate`](../app/src/main/java/com/mikimn/apkloader/dcl/DCLActivity.kt)
+when neither an explicit target class nor
+`manifestReader.getLauncherActivity()` produced one.
+
+Root cause, confirmed by decompiling the real manifest (`aapt2 dump
+xmltree`): Duolingo's manifest declares exactly **one** plain `<activity>`
+(`com.duolingo.splash.LaunchActivity`, no intent-filter of its own) and
+over a dozen `<activity-alias>` entries - one per seasonal/streak icon
+variant. Only one alias is `android:enabled="true"` at a time
+(`com.duolingo.app.LoginActivity`, in this snapshot), and *that* alias is
+what actually carries the `MAIN`/`LAUNCHER` `<intent-filter>`, pointing via
+`android:targetActivity` at the real `LaunchActivity`. Notably, even
+`aapt2 dump badging` itself printed no `launchable-activity` line for this
+manifest - this alias-based launcher pattern isn't unusual tooling blindness,
+it's a genuinely different manifest shape than every app tested so far.
+
+[`AndroidManifestReader.getLauncherActivity()`](../app/src/main/java/com/mikimn/apkloader/apk/AndroidManifestReader.kt)
+only ever searched `<activity>` elements, so it found nothing here. Fixed
+by adding a fallback pass over `<activity-alias>` elements: skip any with
+`android:enabled="false"`, find the one with a `MAIN`/`LAUNCHER`
+intent-filter, then resolve its `targetActivity` through the existing
+`parseActivities()` results (reusing the already-correct `<activity>`
+attribute parsing rather than duplicating it).
+
+**Verified**: past the fix, Duolingo goes dramatically further than
+before - genuinely deep, functioning app behavior with zero exceptions
+anywhere in logcat: real `WorkManager` background jobs actually execute
+(`RecommendationHintsUploadWorker`, `LearnerSpeechUploadWorker`), a real
+network call to `firebaselogging.googleapis.com` succeeds (HTTP 200), and
+the app's own internal telemetry logging (`DuoLog`) fires normally. Full
+regression pass (`calculator.apk`/`simple.apk`/`flappy-bird-1-3.apk`)
+still passes.
+
+**New issue found past the fix, not yet solved**: the app now hangs on a
+blank, solid-color screen instead of showing real content.
+`dumpsys activity` confirms `DCLActivity` is the real, focused,
+`topResumedActivity`, and a `uiautomator dump` of the live accessibility
+tree confirms Duolingo's own real splash layout is genuinely inflated and
+attached (`com.duolingo:id/launchContainer`, `com.duolingo:id/homeContainer`)
+- both containers are just empty `FrameLayout`s. Whatever logic is
+supposed to populate one of them with actual content (a loading spinner,
+the login screen, etc.) never ran, with no logged exception anywhere -
+looks like the splash activity's own init/navigation logic is waiting on
+some check that silently never resolves in this environment, rather than
+throwing. Not yet root-caused; would likely require decompiling Duolingo's
+(large, R8-minified) `LaunchActivity` to trace exactly what it's waiting
+on.
 
 ## How to add a new APK to this log
 
