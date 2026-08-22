@@ -19,6 +19,7 @@ import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.core.util.Predicate
 import com.mikimn.apkloader.ENTRY_POINTS
 import com.mikimn.apkloader.apk.ManifestAwarePlugin
 import com.mikimn.apkloader.pm.PackageManagerAggregate
@@ -43,6 +44,20 @@ class DCLActivity : ComponentActivity() {
     private var shadowActivity: Activity? = null
 
     companion object {
+        /**
+         * Activity.mWindowAdded tracks whether *this specific Activity object* has had its
+         * decor view added to the real WindowManager. The shadow Activity's own copy of this
+         * field is permanently false (nothing ever drives real ActivityThread window-attachment
+         * machinery on the shadow object itself), so blindly syncing it onto the host after
+         * every lifecycle call corrupts the host's real window-attachment bookkeeping: on the
+         * very next resume of an already-window-added host (e.g. returning from a child
+         * activity higher in the same task's back stack), makeVisible()'s `if (!mWindowAdded)`
+         * guard is bypassed and it tries to re-add the already-attached decor view, crashing
+         * with "View ... has already been added to the window manager".
+         */
+        private val LIFECYCLE_COPY_FILTER = Predicate<Pair<java.lang.reflect.Field, Any?>> {
+            it.first.name != "mWindowAdded"
+        }
         const val KEY_ACTIVITY_CLASS = "activityClassName"
         private const val KEY_APPLICATION_CLASS = "applicationClassName"
         const val KEY_APK_ASSET_FILE_NAME = "apkAssetFileName"
@@ -278,7 +293,7 @@ class DCLActivity : ComponentActivity() {
         instrumentation.callActivityOnCreate(activity, savedInstanceState)
         disableAutoGameSignIn(activity)
 
-        FieldMapper.copy(this, activity)
+        FieldMapper.copy(this, activity, LIFECYCLE_COPY_FILTER)
     }
 
     /**
@@ -428,7 +443,7 @@ class DCLActivity : ComponentActivity() {
 
         if (propagateState) {
             // Update state back to this activity
-            FieldMapper.copy(this, shadowActivity!!)
+            FieldMapper.copy(this, shadowActivity!!, LIFECYCLE_COPY_FILTER)
         }
     }
 }
