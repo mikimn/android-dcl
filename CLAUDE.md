@@ -54,7 +54,8 @@ Real-APK test results, and the root-cause write-ups behind most fixes, are recor
    `onCreate` either reads the target APK (`KEY_APK_ASSET_FILE_NAME`: an asset name or an
    absolute device path) and loads it via `FileTrackingClassLoader.addApkFile` → `LoadedApk.load()`
    and registers a `ManifestAwarePlugin`, or reuses an already-loaded APK (`KEY_LOADED_APK_NAME`,
-   set by the ATM hook). It then resolves the target activity (explicit extra, else the manifest
+   set by the ATM hook). Both extras hold a `LoadedApk.name`, so an activity restored into a fresh
+   process after process death simply reloads its APK by name. It then resolves the target activity (explicit extra, else the manifest
    launcher — including `<activity-alias>` launchers), instantiates the APK's content providers,
    creates or reuses the **one** shadow `Application` per `LoadedApk`, and uses `ShadowActivity`
    to reflectively call the hidden `Activity.attach(...)` + `Instrumentation.callActivityOnCreate`
