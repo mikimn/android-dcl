@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -42,6 +43,8 @@ import java.util.ServiceLoader
 
 class DCLActivity : ComponentActivity() {
     private var shadowActivity: Activity? = null
+    /** [LoadedApk.name] of the APK whose activity this instance hosts. */
+    private var hostedApkName: String? = null
 
     companion object {
         /**
@@ -168,6 +171,7 @@ class DCLActivity : ComponentActivity() {
         } else {
             loader.last!!
         }
+        hostedApkName = loadedApk.name
         initResourceLoader(loader)
         bContext?.setShadowPackageName(loadedApk.manifestReader!!.getApplicationInfo().packageName)
 
@@ -418,6 +422,80 @@ class DCLActivity : ComponentActivity() {
     @SuppressLint("MissingSuperCall")
     override fun onSaveInstanceState(outState: Bundle) {
         overrideLifecycleCall("onSaveInstanceState", Bundle::class.java to outState)
+    }
+
+    @SuppressLint("MissingSuperCall")
+    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+        overrideLifecycleCall("onRestoreInstanceState", Bundle::class.java to savedInstanceState)
+    }
+
+    // The shadow Activity is attached with this host's mToken, so AMS delivers every result
+    // the shadow asked for (startActivityForResult, requestPermissions, androidx
+    // registerForActivityResult - which is built on both) to *this* Activity instead.
+    @Deprecated("Deprecated in Java")
+    @SuppressLint("MissingSuperCall")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        overrideLifecycleCall(
+            "onActivityResult",
+            Int::class.javaPrimitiveType!! to requestCode,
+            Int::class.javaPrimitiveType!! to resultCode,
+            Intent::class.java to data
+        )
+    }
+
+    @Deprecated("Deprecated in Java")
+    @SuppressLint("MissingSuperCall")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        // Activity.requestPermissions refuses to start a new request while
+        // mHasCurrentPermissionsRequest is set, and only dispatchRequestPermissionsResult
+        // clears it - which the framework just ran on this host, not on the shadow that
+        // actually made the request. Clear it on the shadow too, or every later
+        // permission request from the loaded app is silently dropped.
+        shadowActivity?.javaClass?.tryGetField("mHasCurrentPermissionsRequest")
+            ?.setBoolean(shadowActivity, false)
+        overrideLifecycleCall(
+            "onRequestPermissionsResult",
+            Int::class.javaPrimitiveType!! to requestCode,
+            Array<String>::class.java to permissions,
+            IntArray::class.java to grantResults
+        )
+    }
+
+    @SuppressLint("MissingSuperCall")
+    override fun onNewIntent(intent: Intent) {
+        // A new intent can reach an existing host instance (DCLActivity is singleTask, and
+        // SINGLE_TOP/CLEAR_TOP launches can land on a proxy slot) while it's hosting a
+        // different loaded activity than the one the intent targets - only hand it to the
+        // shadow if it's actually for that shadow's class.
+        val targetClass = intent.getStringExtra(KEY_ACTIVITY_CLASS)
+        val targetApk = intent.getStringExtra(KEY_APK_ASSET_FILE_NAME)
+            ?: intent.getStringExtra(KEY_LOADED_APK_NAME)
+        val shadow = shadowActivity
+        if (shadow == null ||
+            (targetClass != null && targetClass != shadow.javaClass.name) ||
+            (targetApk != null && targetApk != hostedApkName)
+        ) {
+            Log.w(
+                "DCLActivity",
+                "Dropping onNewIntent for $targetApk/$targetClass, hosting $hostedApkName/${shadow?.javaClass?.name}"
+            )
+            return
+        }
+        overrideLifecycleCall("onNewIntent", Intent::class.java to intent)
+    }
+
+    @SuppressLint("MissingSuperCall")
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        // ActivityThread updates mCurrentConfig on the Activity it knows about (this host)
+        // before calling onConfigurationChanged - mirror that on the shadow first, or the
+        // state sync afterwards would copy the shadow's stale configuration back over ours.
+        shadowActivity?.javaClass?.tryGetField("mCurrentConfig")
+            ?.set(shadowActivity, Configuration(newConfig))
+        overrideLifecycleCall("onConfigurationChanged", Configuration::class.java to newConfig)
     }
 
     private fun overrideLifecycleCall(

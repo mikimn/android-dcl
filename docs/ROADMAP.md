@@ -6,9 +6,9 @@ Tiers: **1** small, local fixes · **2** moderate virtualization-layer work · *
 system-interface hooks · **4** needs pre-declared system-bound stubs · **5** needs root/platform
 signing (documented for completeness; likely won't fix).
 
-| # | Issue | Tier | Item | Status |
-| --- | --- | --- | --- | --- |
-| R1 | #13 | 1 | [Forward result/permission/intent/config callbacks from DCLActivity to the shadow Activity](#r1) | open |
+| # | Tier | Item | Status |
+| --- | --- | --- | --- |
+| R1 | #13 | 1 | [Forward result/permission/intent/config callbacks from DCLActivity to the shadow Activity](#r1) | done (pending device verification) |
 | R2 | #14 | 1 | [Load native libraries bundled inside a standalone APK](#r2) | open |
 | R3 | #15 | 1 | [Remove hardcoded entry points, activity whitelist and host package name](#r3) | open |
 | R4 | #16 | 1 | [Survive process death: reload the APK when a proxy activity is restored](#r4) | open |
