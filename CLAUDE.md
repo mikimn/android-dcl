@@ -70,11 +70,10 @@ Real-APK test results, and the root-cause write-ups behind most fixes, are recor
    `CallerClassResolver`'s stack walk) is the loaded APK's own code — platform code such as
    WebView must keep seeing the host package.
 
-The legacy, pre-ATM-hook entry path still exists: `ENTRY_POINTS` / `TEST_APK_DISPLAY_NAMES` in
-`MainActivity.kt` describe the bundled sample assets, and `MainActivity.ACTIVITY_WHITELIST` +
-`DCLActivity.forActivityClass` manually redirect a few hardcoded classes. A few hardcoded host
-entries (`com.dotgears.GameActivity`, Shazam/WhatsApp/OnePlus activities, …) remain in the host
-manifest from that era.
+The main screen launches APKs with `DCLActivity.intentForAPK(context, apkPath)`; bundled samples
+are discovered from `assets/*.apk` (`TEST_APK_DISPLAY_NAMES` only gives them nicer titles). A
+few app-specific host manifest entries (`com.dotgears.GameActivity`, Shazam/WhatsApp/OnePlus
+activities, Firebase `datatransport` services, …) remain from before the ATM hook existed.
 
 ### Code & resource loading
 
@@ -134,8 +133,8 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   "active" at a time. Don't assume concurrent loads work.
 - One shadow `Application` per `LoadedApk` (`LoadedApk.shadowApplication`): creating a second one
   per navigation hop breaks apps with path-keyed singletons (e.g. DataStore).
-- Hardcoded host package name (`"com.mikimn.apkloader"`) appears in `DCLActivity` and
-  `MyContextWrapper` (`TODO Make this dynamically resolved`) — don't copy that pattern.
+- Don't hardcode the host package name: derive it from a `Context` or from the intent being
+  rewritten (only the dead `MyContextWrapper` and `scripts/test-apk.sh` still hardcode it).
 - All loaded apps share the host's data directory, uid and granted permissions.
 
 ## Roadmap

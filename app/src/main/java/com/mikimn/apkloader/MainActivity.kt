@@ -3,7 +3,6 @@ package com.mikimn.apkloader
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.util.Log
@@ -49,34 +48,8 @@ import com.mikimn.apkloader.dcl.FileTrackingClassLoader
 import com.mikimn.apkloader.ui.theme.APKLoaderTheme
 
 
-data class APKEntryPoints(
-    val packageName: String,
-    val mainActivityClassName: String,
-    val applicationClassName: String?
-)
-
-
-val ENTRY_POINTS = mapOf(
-    // Single-activity apk
-    "calculator.apk" to APKEntryPoints(
-        "com.android.calculator2",
-        "com.android.calculator2.Calculator",
-        "com.android.calculator2.CalculatorApplication"
-    ),
-    // Simple debug compiled apk
-    "simple.apk" to APKEntryPoints(
-        "com.mikimn.simpleapp",
-        "com.mikimn.simpleapp.MainActivity",
-        null
-    ),
-    // Simple next activity hop
-    "flappy-bird-1-3.apk" to APKEntryPoints(
-        "com.dotgears.flappy",
-        "com.dotgears.flappy.SplashScreen",
-        null
-    )
-)
-
+// Bundled sample APKs are discovered from assets/ at runtime; this only gives them friendlier
+// tile titles. Each one's launcher activity is resolved from its own manifest.
 private val TEST_APK_DISPLAY_NAMES = mapOf(
     "calculator.apk" to "Calculator",
     "simple.apk" to "Simple App",
@@ -85,15 +58,6 @@ private val TEST_APK_DISPLAY_NAMES = mapOf(
 
 
 class MainActivity : ComponentActivity() {
-    companion object {
-        private val ACTIVITY_WHITELIST = arrayOf(
-            "com.dotgears.GameActivity",
-            "com.dotgears.flappy.SplashScreen",
-            "com.mikimn.simpleapp.MainActivity",
-            "com.android.calculator2.Calculator"
-        )
-    }
-
     override fun attachBaseContext(newBase: Context) {
         super.attachBaseContext(DCLContext(newBase))
     }
@@ -116,14 +80,6 @@ class MainActivity : ComponentActivity() {
             loader.clearLast()
         }
     }
-
-    override fun startActivity(intent: Intent) {
-        if (intent.component?.className in ACTIVITY_WHITELIST) {
-            return super.startActivity(DCLActivity.forActivityClass(intent, intent.component?.className ?: ""))
-        }
-
-        super.startActivity(intent)
-    }
 }
 
 /** A single tile in the main screen's grid: either a bundled sample APK or a real installed app. */
@@ -135,25 +91,21 @@ private sealed interface LoaderTile {
     val intent: Intent
 }
 
-private class TestApkTile(assetName: String, packageManager: PackageManager) : LoaderTile {
+private class TestApkTile(assetName: String, context: Context) : LoaderTile {
     override val title = TEST_APK_DISPLAY_NAMES[assetName] ?: assetName
     override val subtitle = assetName
     override val isTestApk = true
-    override val icon: Drawable? = packageManager.defaultActivityIcon
-    override val intent: Intent by lazy { DCLActivity.intentForAPK(assetName) }
+    override val icon: Drawable? = context.packageManager.defaultActivityIcon
+    override val intent: Intent = DCLActivity.intentForAPK(context, assetName)
 }
 
-private class InstalledAppTile(info: ApplicationInfo, packageManager: PackageManager) : LoaderTile {
+private class InstalledAppTile(info: ApplicationInfo, context: Context) : LoaderTile {
+    private val packageManager = context.packageManager
     override val title: String = info.loadLabel(packageManager).toString()
     override val subtitle: String = info.packageName
     override val isTestApk = false
     override val icon: Drawable? = runCatching { info.loadIcon(packageManager) }.getOrNull()
-
-    // intentForAPK() only understands "base.apk"-suffixed or "/system/"-prefixed device paths;
-    // some OEM-partitioned apps' publicSourceDir doesn't match that (e.g.
-    // /data/app/BackupAndRestore/BackupAndRestore.apk), so this must stay lazy - building the
-    // tile list shouldn't fail just because one of ~100 installed apps has an unusual path.
-    override val intent: Intent by lazy { DCLActivity.intentForAPK(info.publicSourceDir) }
+    override val intent: Intent = DCLActivity.intentForAPK(context, info.publicSourceDir)
 }
 
 @Composable
@@ -162,12 +114,15 @@ fun MainLayout(modifier: Modifier = Modifier) {
     val packageManager = context.packageManager
 
     val tiles = remember {
-        val testApkTiles = ENTRY_POINTS.keys.map { TestApkTile(it, packageManager) }
+        val testApkTiles = (context.assets.list("") ?: emptyArray())
+            .filter { it.endsWith(".apk") }
+            .sorted()
+            .map { TestApkTile(it, context) }
         val installedAppTiles = packageManager
             .getInstalledApplications(0)
             .filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
             .sortedBy { it.loadLabel(packageManager).toString().lowercase() }
-            .map { InstalledAppTile(it, packageManager) }
+            .map { InstalledAppTile(it, context) }
         testApkTiles + installedAppTiles
     }
 

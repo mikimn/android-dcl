@@ -83,9 +83,7 @@ object ActivityTaskManagerHook {
     /**
      * Rewrites outgoing explicit-component intents that target a class belonging to a
      * loaded APK, so AMS resolves them against a manifest-declared DCLActivityProxyPool
-     * slot instead of rejecting them outright - see DCLActivity.forActivityClass for the
-     * equivalent trick applied manually, via a hardcoded whitelist, before this hook
-     * existed.
+     * slot instead of rejecting them outright.
      */
     private class RewritingInvocationHandler(
         private val real: Any,
