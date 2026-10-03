@@ -9,7 +9,7 @@ signing (documented for completeness; likely won't fix).
 | # | Tier | Item | Status |
 | --- | --- | --- | --- |
 | R1 | #13 | 1 | [Forward result/permission/intent/config callbacks from DCLActivity to the shadow Activity](#r1) | done (pending device verification) |
-| R2 | #14 | 1 | [Load native libraries bundled inside a standalone APK](#r2) | open |
+| R2 | #14 | 1 | [Load native libraries bundled inside a standalone APK](#r2) | done (pending device verification) |
 | R3 | #15 | 1 | [Remove hardcoded entry points, activity whitelist and host package name](#r3) | open |
 | R4 | #16 | 1 | [Survive process death: reload the APK when a proxy activity is restored](#r4) | open |
 | R5 | #17 | 2 | [Complete PackageManager answers for loaded packages](#r5) | open |
@@ -60,6 +60,8 @@ Any APK loaded from assets (or a universal APK with `extractNativeLibs=false`) t
 
 #### Proposed fix
 Add `<extracted>/lib/<abi>` for the device's supported ABIs (`Build.SUPPORTED_ABIS`, in preference order — only the first ABI present in the APK) to the library path.
+
+**Done** for ABIs matching the host process's bitness. Remaining gap: apps shipping only 32-bit libs (e.g. `flappy-bird-1-3.apk`: `armeabi`/`armeabi-v7a`/`x86`) can't load them in a 64-bit host process; that would need a separate 32-bit host APK (bitness is per-package, not per-process).
 
 <a id="r3"></a>
 ### R3. [Tier 1] Remove hardcoded entry points, activity whitelist and host package name
