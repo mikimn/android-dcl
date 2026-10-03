@@ -6,12 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ApkLoader (`com.mikimn.apkloader`) is a proof-of-concept Android app that dynamically loads and
 runs *other* APKs' Activities in-process **without installing them** — no `pm install`, no
-`PackageManager` registration. It works by hooking Android's own component-instantiation and
-resource-resolution internals via reflection, in the spirit of plugin frameworks like VirtualApp
-or Shadow.
+`PackageManager` registration. It works by hooking Android's own component-instantiation,
+activity-launch and resource-resolution internals via reflection, in the spirit of plugin
+frameworks like VirtualApp or Shadow.
 
 Sample target APKs used for manual testing live in `app/src/main/assets/` (`calculator.apk`,
-`flappy-bird-1-3.apk`, `simple.apk`).
+`flappy-bird-1-3.apk`, `simple.apk`). The main screen also lists every installed non-system app
+and can load it straight from its install directory (`ApplicationInfo.publicSourceDir`).
 
 ## Build / test / run
 
@@ -22,10 +23,13 @@ Sample target APKs used for manual testing live in `app/src/main/assets/` (`calc
 ./gradlew testDebugUnitTest --tests "com.mikimn.apkloader.ExampleUnitTest"   # single unit test
 ./gradlew connectedAndroidTest # instrumented tests (needs a device/emulator)
 ./gradlew lint
+scripts/test-apk.sh path/to/app.apk [activityClassName]   # push + launch a real APK via DCLActivity
 ```
 
-There is no CLI-runnable emulator config baked into the repo — instrumented tests and manual
-verification require a connected device/emulator at API level ≥ 30 (see `minSdk` below).
+There is no CI and no CLI-runnable emulator config baked into the repo — instrumented tests and
+manual verification require a connected device/emulator at API level ≥ 30 (see `minSdk` below).
+Real-APK test results, and the root-cause write-ups behind most fixes, are recorded in
+[`docs/apk-test-log.md`](docs/apk-test-log.md) — add a row there when testing a new APK.
 
 ## Architecture
 
@@ -36,81 +40,114 @@ verification require a connected device/emulator at API level ≥ 30 (see `minSd
 2. [`DCLAppComponentFactory`](app/src/main/java/com/mikimn/apkloader/dcl/DCLAppComponentFactory.kt)
    (`CoreComponentFactory` subclass) installs a `FileTrackingClassLoader` at
    `instantiateClassLoader`, and in `instantiateActivity` redirects any activity class name it
-   doesn't recognize to the manifest-registered shim `DCLActivity`, stashing the real target
-   class name as an intent extra.
-3. [`DCLActivity`](app/src/main/java/com/mikimn/apkloader/dcl/DCLActivity.kt) is the real,
-   manifest-registered host. `onCreate` reads the target APK's bytes (`AssetReader`), hands them
-   to `FileTrackingClassLoader.addApkFile` → `LoadedApk.load()`, registers a `ManifestAwarePlugin`
-   for that package, resolves the target `ActivityInfo`, builds a `ShadowApplication`, then uses
-   `ShadowActivity` to reflectively call the hidden `Activity.attach(...)` and
-   `Instrumentation.callActivityOnCreate` on the *real* external Activity instance. Every
-   lifecycle callback on the host (`onStart`/`onResume`/`onPause`/…) is manually forwarded to the
-   shadow instance, with state synced via `FieldMapper.copy`.
-4. `MainActivity.startActivity` intercepts any `Intent` targeting a class in
-   `ACTIVITY_WHITELIST` and redirects it through `DCLActivity.forActivityClass` instead of
-   launching it directly — this is how a loaded app's internal navigation (e.g. "next screen")
-   keeps working.
-5. `DCLContext` / `DCLApplication` / `MyContextWrapper` wrap the base `Context`, overriding
-   `getPackageManager()` (returns a plugin-based `PackageManagerAggregate`) and
-   `getApplicationContext()` (returns the shadow `Application`), so loaded code perceives a
-   package-scoped illusion of "being installed."
+   doesn't recognize (including `DCLActivityProxyN` slots) to a real `DCLActivity` instance.
+3. [`DCLApplication`](app/src/main/java/com/mikimn/apkloader/dcl/DCLApplication.kt) (the host
+   `Application`) installs [`ActivityTaskManagerHook`](app/src/main/java/com/mikimn/apkloader/dcl/ActivityTaskManagerHook.kt)
+   at startup: it swaps the process's cached `IActivityTaskManager` binder client for a
+   `java.lang.reflect.Proxy`. Every outgoing `startActivity*` intent whose component belongs to a
+   loaded APK (`FileTrackingClassLoader.ownerOf`) is rewritten to the next
+   [`DCLActivityProxyPool`](app/src/main/java/com/mikimn/apkloader/dcl/DCLActivityProxyPool.kt)
+   slot (8 manifest-declared `standard` activities, round-robin), with the real class/APK name
+   stashed as extras. **This is how a loaded app's own in-app navigation works** — target
+   activities don't need host manifest entries.
+4. [`DCLActivity`](app/src/main/java/com/mikimn/apkloader/dcl/DCLActivity.kt) is the real host.
+   `onCreate` either reads the target APK (`KEY_APK_ASSET_FILE_NAME`: an asset name or an
+   absolute device path) and loads it via `FileTrackingClassLoader.addApkFile` → `LoadedApk.load()`
+   and registers a `ManifestAwarePlugin`, or reuses an already-loaded APK (`KEY_LOADED_APK_NAME`,
+   set by the ATM hook). It then resolves the target activity (explicit extra, else the manifest
+   launcher — including `<activity-alias>` launchers), instantiates the APK's content providers,
+   creates or reuses the **one** shadow `Application` per `LoadedApk`, and uses `ShadowActivity`
+   to reflectively call the hidden `Activity.attach(...)` + `Instrumentation.callActivityOnCreate`
+   on the real external Activity instance, sharing the host's window and token. Lifecycle callbacks
+   on the host are forwarded to the shadow instance, with state synced back via `FieldMapper.copy`
+   (`mWindowAdded` is deliberately excluded — see the comment on `LIFECYCLE_COPY_FILTER`).
+5. `DCLContext` wraps the base `Context` of the host Application/Activities: `getPackageManager()`
+   returns a plugin-based `PackageManagerAggregate`, `getApplicationContext()` returns the shadow
+   `Application`, `getResources()` is cached and falls back to the shadow package in
+   `getIdentifier`, and `getPackageName()` returns the loaded package **only** when the caller (per
+   `CallerClassResolver`'s stack walk) is the loaded APK's own code — platform code such as
+   WebView must keep seeing the host package.
+
+The legacy, pre-ATM-hook entry path still exists: `ENTRY_POINTS` / `TEST_APK_DISPLAY_NAMES` in
+`MainActivity.kt` describe the bundled sample assets, and `MainActivity.ACTIVITY_WHITELIST` +
+`DCLActivity.forActivityClass` manually redirect a few hardcoded classes. A few hardcoded host
+entries (`com.dotgears.GameActivity`, Shazam/WhatsApp/OnePlus activities, …) remain in the host
+manifest from that era.
 
 ### Code & resource loading
 
-`LoadedApk.load()` extracts the target APK's dex/resources to a cache dir (`utils/Zip`), builds
-an `InMemoryDexClassLoader` chained to the host's classloader, and registers `ResourcesProvider`s
-via the Android 11+ `ResourcesLoader` overlay API — **this, not the classic package-ID resource
-trick, is why `minSdk = 30`.** `FileTrackingClassLoader` is installed as the process's classloader
-and delegates `loadClass` across every APK it has loaded.
+`LoadedApk.load()` writes the APK bytes to a temp file, extracts it into a per-APK cache dir
+(`utils/Zip`), discovers `split_config.*.apk` siblings when loaded from an install dir, builds an
+`InMemoryDexClassLoader` (parent: the host classloader's parent) whose native library path is the
+install dir's `lib/` plus extracted split `lib/` dirs, and registers `ResourcesProvider`s (base +
+splits, as APK and as extracted directory) via the Android 11+ `ResourcesLoader` API —
+**this, not the classic package-ID resource trick, is why `minSdk = 30`.** The host's own
+resources use package id `0x8f` (`androidResources.additionalParameters`) so they never collide
+with a loaded app's `0x7f`. `FileTrackingClassLoader` is installed as the process's classloader
+and delegates `loadClass` across every APK it has loaded, falling back to the host.
 
 ### Package manager plugin system (`pm/`, `plugins/`, `apk/`)
 
-- `pm.PackageManagerWrapper` — full `PackageManager` passthrough with logging.
+- `pm.PackageManagerWrapper` — full `PackageManager` passthrough with logging. New public
+  `PackageManager` methods must be overridden explicitly here, or the base class's
+  "not implemented" stub is hit instead of the real PM (this has caused real crashes).
 - `pm.PackageManagerAggregate` — layers an ordered, mutable list of `pm.PackageManagerPlugin`s
-  over the wrapper (first match wins, else falls through to the real PM).
-- `apk.ManifestAwarePlugin` (implements `PackageManagerPlugin`) answers component-info queries by
-  parsing the loaded APK's binary `AndroidManifest.xml` via `apk.AndroidManifestReader`
-  (uses the `AXML` library). `DCLActivity.onCreate` registers one of these per loaded APK.
-- `pm.DefaultPackageManagerPlugin` patches Firebase's `ComponentDiscoveryService` metadata so
-  loaded apps bundling Firebase don't crash on missing component info.
-- `plugins.PlayServicesBlockingPackageManager` exists to block GMS-related PM lookups but is
-  currently **not wired in** (`plugins.DefaultPluginProvider` has it commented out).
+  over a base `PackageManagerWrapper` (first match wins, else falls through).
+- `plugins.DefaultPluginProvider` builds the process-wide aggregate:
+  `PlayServicesBlockingPackageManager` (pretends GMS isn't installed, whitelists `AdActivity`) as
+  the base, plus `pm.DefaultPackageManagerPlugin` (patches Firebase's `ComponentDiscoveryService`
+  metadata).
+- `apk.ManifestAwarePlugin` answers activity/service/provider/application info and a minimal
+  action-only `resolveActivity` by parsing the loaded APK's binary `AndroidManifest.xml` via
+  `apk.AndroidManifestReader` (uses the `AXML` library). `DCLActivity.onCreate` registers one per
+  loaded APK.
 
 ### `reflection/` and `shadow/`
 
 `reflection.FieldMapper` / `ReflectionUtils` are the low-level reflective field/method access
-helpers everything above is built on. `shadow.ShadowActivity` / `ShadowApplication` use them to
-reach hidden AOSP fields (`mMainThread`, `mInstrumentation`, `mPackageInfo`) and hidden methods
-(`Activity.attach`) — this hardcodes AOSP-internal names and is inherently fragile across OS
-versions, which is why `HiddenApiBypass` (lsposed) plus a broad
-`StrictMode.VmPolicy.permitNonSdkApiUsage()` are used at startup.
+helpers everything above is built on (`HiddenApiBypass` from lsposed for hidden methods).
+`shadow.ShadowActivity` / `ShadowApplication` use them to reach hidden AOSP fields
+(`mMainThread`, `mInstrumentation`, `mPackageInfo`, `mInitialApplication`) and hidden methods
+(`Activity.attach`, invoked positionally) — inherently fragile across OS versions, which is also
+why broad `StrictMode.VmPolicy.permitNonSdkApiUsage()` is set at startup.
+
+### Permissions and unavoidable failures
+
+The host manifest declares every public non-`BIND_*` `android.permission.*` constant, because
+the OS checks the *host's* permissions when loaded code calls permission-gated APIs.
+Signature-level permissions still can't be held; `DCLApplication` installs a default uncaught
+exception handler that swallows only `SecurityException("Permission Denial…")` on background
+threads, and `ShadowApplication.onCreate` catches exceptions from the loaded app's
+`Application.onCreate`. App-specific one-off patches also exist (`DCLActivity.disableAutoGameSignIn`,
+the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
 
 ## Non-obvious invariants when extending this code
 
-- **Every external Activity/Service class the shim will proxy must be pre-declared** as a
-  component in the host `AndroidManifest.xml` (see the many app-specific `<activity>`/`<service>`
-  entries there) *and* added to `MainActivity.ACTIVITY_WHITELIST` (for in-app navigation) or
-  referenced via `ENTRY_POINTS`/`DCLActivity.intentForAPK` (for the initial launch). There is no
-  dynamic manifest merging into the host process's component table — this is the main thing to
-  update when wiring up a new target APK.
-- `DCLContext.shadowPackageName` / `shadowApp` are **companion-object (static) state** — only one
-  loaded APK's shadow application can be "active" at a time. Don't assume concurrent loads work.
-- `MyContextWrapper` currently hardcodes the host package name (`"com.mikimn.apkloader"`) in a few
-  places marked `TODO Make this dynamically resolved` — don't copy that pattern into new code
-  without checking whether it should be reading from the currently loaded shadow package instead.
+- Activities of a loaded APK reached via explicit intents are handled by the ATM hook + proxy
+  pool. Other component types (services, receivers, providers reached through the system,
+  PendingIntents) are **not** — see `docs/ROADMAP.md`.
+- `DCLContext.shadowPackageName` / `shadowApp` are **companion-object (static) state**, and
+  `ShadowApplication` patches process-global `ActivityThread` fields — only one loaded APK can be
+  "active" at a time. Don't assume concurrent loads work.
+- One shadow `Application` per `LoadedApk` (`LoadedApk.shadowApplication`): creating a second one
+  per navigation hop breaks apps with path-keyed singletons (e.g. DataStore).
+- Hardcoded host package name (`"com.mikimn.apkloader"`) appears in `DCLActivity` and
+  `MyContextWrapper` (`TODO Make this dynamically resolved`) — don't copy that pattern.
+- All loaded apps share the host's data directory, uid and granted permissions.
 
-## Known dead / in-progress code (mid-refactor state)
+## Roadmap
 
-The project was recently refactored from a flatter structure (deleted `loader/ApkLoader.kt`,
-`loader/ApkLoaderImpl.kt`, root-level `DCLActivity.kt`/`DCLApplication.kt`) into the current
-`dcl/`, `apk/`, `pkg/`, `plugins/`, `pm/` package layout. Artifacts of that refactor still present:
+[`docs/ROADMAP.md`](docs/ROADMAP.md) lists the remaining generalization work (R1–R20), ordered by
+complexity, each written as a fileable issue. Update its status column when an item lands.
+
+## Known dead / in-progress code
 
 - **`pkg/` is entirely unused** — a verbatim port of AOSP's internal `PackageManagerService`
-  parsing interfaces (`AndroidPackage`, `ParsedActivity`, `ParsedComponent`, `ParsedMainComponent`,
-  `ParsedPackage`, `ParsingPackage`). Nothing references it; likely scaffolding for eventually
-  replacing `AndroidManifestReader`'s ad hoc parsing. Don't build on it without confirming intent.
+  parsing interfaces. Nothing references it; don't build on it without confirming intent.
 - `apk/ApkExtract.kt` is fully commented-out legacy code (an old app-listing adapter).
-- `dcl/DCLInstrumentation.kt` (a full `Instrumentation` passthrough) is never instantiated
-  anywhere — appears intended to be installed via reflection but that wiring isn't done.
+- `dcl/DCLInstrumentation.kt` (a full `Instrumentation` passthrough) is never instantiated.
+- `MyContextWrapper` is only imported by `DCLContext`, not used by it.
+- `DCLActivity.onCreate` contains leftover `HandlerThread`/handler scaffolding that no longer
+  does anything.
 - Assume any given file may have stale/half-finished pieces; check for TODOs before extending a
   class rather than assuming its current behavior is final.
