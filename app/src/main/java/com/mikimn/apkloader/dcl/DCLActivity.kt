@@ -21,6 +21,7 @@ import android.os.StrictMode.VmPolicy
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.core.util.Predicate
+import com.mikimn.apkloader.apk.LoadedApk
 import com.mikimn.apkloader.apk.ManifestAwarePlugin
 import com.mikimn.apkloader.pm.PackageManagerAggregate
 import com.mikimn.apkloader.reflection.FieldMapper
@@ -121,33 +122,22 @@ class DCLActivity : ComponentActivity() {
         val loadedApkName = intent.getStringExtra(KEY_LOADED_APK_NAME)
         val bContext = if (baseContext is DCLContext) baseContext as DCLContext else null
 
-        val loadedApk = if (apkAssetFileName != null) {
-            // Delegated activity attachment
-            val reader = AssetReader(this)
-            val apkFile = File(apkAssetFileName)
-
-            val apkData = if (apkFile.exists()) {
-                // Read as file
-                reader.readStream(FileInputStream(apkFile))
-            } else {
-                // Read as asset
-                reader.readFile(apkAssetFileName)
-            }
-
-            val loadedApk = loader.addApkFile(apkAssetFileName, apkData, resources)
-
-            if (packageManager is PackageManagerAggregate) {
-                val pma = packageManager as PackageManagerAggregate
-                pma.addPlugin(ManifestAwarePlugin(loadedApk.manifestReader!!))
-            }
-
-            loadedApk
-        } else if (loadedApkName != null) {
-            // In-app navigation to an already-loaded APK's own activity, retargeted
-            // through a DCLActivityProxyPool slot by ActivityTaskManagerHook.
-            loader.apkFile(loadedApkName)!!
+        // KEY_LOADED_APK_NAME (an in-app navigation hop retargeted through a
+        // DCLActivityProxyPool slot by ActivityTaskManagerHook) names an APK that was already
+        // loaded in this process - unless the process was killed since, and Android is now
+        // restoring this activity from recents or the back stack into a fresh, empty process.
+        // Both extras hold the same kind of value (LoadedApk.name: an asset name or an absolute
+        // device path), so either way it can simply be (re)loaded by name.
+        val apkName = apkAssetFileName ?: loadedApkName
+        val loadedApk = if (apkName != null) {
+            loader.apkFile(apkName) ?: loadApk(loader, apkName)
         } else {
-            loader.last!!
+            // Only reachable through a legacy app-specific host manifest entry (see
+            // DCLAppComponentFactory.instantiateDCLActivity), which carries no APK name at all.
+            loader.last ?: throw IllegalStateException(
+                "No APK to host for ${intent.component}: no $KEY_APK_ASSET_FILE_NAME/" +
+                    "$KEY_LOADED_APK_NAME extra and nothing loaded in this process"
+            )
         }
         hostedApkName = loadedApk.name
         initResourceLoader(loader)
@@ -254,6 +244,9 @@ class DCLActivity : ComponentActivity() {
                     shadowActivity = loadedApk.loadClass(activityClassName).newInstance() as Activity
                 }
 
+                // The saved state may hold the loaded app's own Parcelables (view/fragment state),
+                // which a Bundle can only unparcel with the APK's classloader, not the host's.
+                loadedApk.loader?.let { savedInstanceState?.classLoader = it }
                 initShadowActivity(shadowActivity!!, shadowApp, newActivityInfo, savedInstanceState)
 
                 isWaitingOnHandler = false;
@@ -264,6 +257,25 @@ class DCLActivity : ComponentActivity() {
 //            Log.d("DCLActivity", "Thread.sleep")
 //            Thread.sleep(100)
 //        }
+    }
+
+    /** Reads [apkName] (an absolute device path, else an asset name) and loads it. */
+    private fun loadApk(loader: FileTrackingClassLoader, apkName: String): LoadedApk {
+        val reader = AssetReader(this)
+        val apkFile = File(apkName)
+
+        val apkData = if (apkFile.exists()) {
+            FileInputStream(apkFile).use { reader.readStream(it) }
+        } else {
+            reader.readFile(apkName)
+        }
+
+        val loadedApk = loader.addApkFile(apkName, apkData, resources)
+
+        (packageManager as? PackageManagerAggregate)
+            ?.addPlugin(ManifestAwarePlugin(loadedApk.manifestReader!!))
+
+        return loadedApk
     }
 
     private fun initShadowActivity(
