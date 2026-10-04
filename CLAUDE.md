@@ -59,7 +59,9 @@ Real-APK test results, and the root-cause write-ups behind most fixes, are recor
    creates or reuses the **one** shadow `Application` per `LoadedApk`, and uses `ShadowActivity`
    to reflectively call the hidden `Activity.attach(...)` + `Instrumentation.callActivityOnCreate`
    on the real external Activity instance, sharing the host's window and token. Lifecycle callbacks
-   on the host are forwarded to the shadow instance, with state synced back via `FieldMapper.copy`
+   on the host are forwarded to the shadow instance — and, because the shadow shares the host's
+   token, so are `onActivityResult`/`onRequestPermissionsResult`/`onNewIntent`/
+   `onConfigurationChanged`/`onRestoreInstanceState` — with state synced back via `FieldMapper.copy`
    (`mWindowAdded` is deliberately excluded — see the comment on `LIFECYCLE_COPY_FILTER`).
 5. `DCLContext` wraps the base `Context` of the host Application/Activities: `getPackageManager()`
    returns a plugin-based `PackageManagerAggregate`, `getApplicationContext()` returns the shadow
