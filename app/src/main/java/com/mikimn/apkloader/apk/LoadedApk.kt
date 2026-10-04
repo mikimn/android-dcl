@@ -4,8 +4,11 @@ import android.app.Application
 import android.content.res.Resources
 import android.content.res.loader.ResourcesLoader
 import android.content.res.loader.ResourcesProvider
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.ParcelFileDescriptor.MODE_READ_ONLY
+import android.os.Process
+import android.util.Log
 import com.mikimn.apkloader.reflection.tryGetMethod
 import com.mikimn.apkloader.utils.Zip
 import dalvik.system.InMemoryDexClassLoader
@@ -82,7 +85,18 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
                 splitApkOutputDirs.add(outputDir)
             }
 
-            loader = buildClassLoader(extractedApkDirectory, splitApkNativeDirs + listOf(nativeLibsUncompressedDir), baseClassLoader)
+            // The base APK's own lib/<abi>/*.so, as just extracted above. The install-dir lib/
+            // folder only exists for installed apps whose libs the package manager extracted;
+            // an APK loaded from assets (or one built with extractNativeLibs=false and no ABI
+            // split) carries its libs only inside the APK itself.
+            val baseApkNativeDir = primaryAbiDir(File(extractedApkDirectory, "lib"))
+
+            loader = buildClassLoader(
+                extractedApkDirectory,
+                splitApkNativeDirs + listOf(nativeLibsUncompressedDir),
+                listOfNotNull(baseApkNativeDir),
+                baseClassLoader
+            )
 
             // TODO Move inside buildClassLoader
             // Should fix `Module with the Main dispatcher is missing. Add dependency providing the Main dispatcher, e.g. 'kotlinx-coroutines-android ...`
@@ -117,9 +131,36 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
         }
     }
 
+    /**
+     * The `lib/<abi>` subdirectory for this process's most-preferred ABI that the APK ships, if
+     * any. The loaded code runs in the *host's* process, so only ABIs matching its bitness can
+     * work (a 64-bit process can't dlopen a 32-bit `.so`, even on a device that supports
+     * 32-bit apps), and only one ABI may be used: mixing them on the search path lets the
+     * linker pick whichever directory comes first.
+     */
+    private fun primaryAbiDir(libDir: File): File? {
+        val processAbis = if (Process.is64Bit()) Build.SUPPORTED_64_BIT_ABIS else Build.SUPPORTED_32_BIT_ABIS
+        val match = processAbis
+            .map { File(libDir, it) }
+            .firstOrNull { it.isDirectory }
+
+        if (match == null) {
+            val shippedAbis = libDir.listFiles { f -> f.isDirectory }?.map { it.name }.orEmpty()
+            if (shippedAbis.isNotEmpty()) {
+                Log.w(
+                    "LoadedApk",
+                    "$name ships native libs for $shippedAbis, none loadable in this " +
+                        "${if (Process.is64Bit()) "64" else "32"}-bit process (${processAbis.toList()})"
+                )
+            }
+        }
+        return match
+    }
+
     private fun buildClassLoader(
         extractedApkDirectory: File,
         nativeLibsUncompressedDirs: List<File?>,
+        nativeLibAbiDirs: List<File>,
         baseClassLoader: ClassLoader
     ): ClassLoader {
         val dexFiles = extractedApkDirectory.listFiles { f -> f.extension == "dex" }
@@ -133,10 +174,12 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             ByteBuffer.wrap(dexFile.readBytes())
         }.toTypedArray()
 
-        val allLibPaths = nativeLibsUncompressedDirs.mapNotNull { file ->
-            file?.absolutePath + File.pathSeparator + (file?.listFiles()
+        // filterNotNull first: a null dir (no install-dir lib/, e.g. any asset-loaded APK) used
+        // to stringify into a literal "null:" search path entry.
+        val allLibPaths = nativeLibsUncompressedDirs.filterNotNull().map { file ->
+            file.absolutePath + File.pathSeparator + (file.listFiles()
                 ?.joinToString(File.pathSeparator) { it.absolutePath } ?: "")
-        }.joinToString(File.pathSeparator)
+        }.plus(nativeLibAbiDirs.map { it.absolutePath }).joinToString(File.pathSeparator)
 
         return InMemoryDexClassLoader(dexBuffers, allLibPaths, baseClassLoader)
     }
