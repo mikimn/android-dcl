@@ -21,7 +21,6 @@ import android.os.StrictMode.VmPolicy
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.core.util.Predicate
-import com.mikimn.apkloader.ENTRY_POINTS
 import com.mikimn.apkloader.apk.ManifestAwarePlugin
 import com.mikimn.apkloader.pm.PackageManagerAggregate
 import com.mikimn.apkloader.reflection.FieldMapper
@@ -63,53 +62,31 @@ class DCLActivity : ComponentActivity() {
             it.first.name != "mWindowAdded"
         }
         const val KEY_ACTIVITY_CLASS = "activityClassName"
-        private const val KEY_APPLICATION_CLASS = "applicationClassName"
         const val KEY_APK_ASSET_FILE_NAME = "apkAssetFileName"
         /** Set by [ActivityTaskManagerHook] when it retargets an intent to a proxy pool slot. */
         const val KEY_LOADED_APK_NAME = "loadedApkName"
 
-        fun intentForAPK(assetName: String): Intent {
-            if (assetName.endsWith("base.apk") || assetName.startsWith("/system/")) {
-                // From device
-                return Intent().apply {
-                    component = DCLActivity::class.java.`package`?.let {
-                        ComponentName(
-                            "com.mikimn.apkloader",
-                            DCLActivity::class.java.name
-                        )
-                    }
-                }.apply {
-                    // putExtra(KEY_ACTIVITY_CLASS, entryPoint.mainActivityClassName)
-                    // putExtra(KEY_APPLICATION_CLASS, entryPoint.applicationClassName)
-                    putExtra(KEY_APK_ASSET_FILE_NAME, assetName)
-                }
-            }
-
-            val entryPoint =
-                ENTRY_POINTS.getOrElse(assetName) { throw IllegalArgumentException("No entry points for $assetName") }
-            return Intent().apply {
-                component = DCLActivity::class.java.`package`?.let {
-                    ComponentName(
-                        it.name,
-                        entryPoint.mainActivityClassName
-                    )
-                }
-            }.apply {
-                putExtra(KEY_ACTIVITY_CLASS, entryPoint.mainActivityClassName)
-                putExtra(KEY_APPLICATION_CLASS, entryPoint.applicationClassName)
-                putExtra(KEY_APK_ASSET_FILE_NAME, assetName)
-            }
+        /**
+         * Launches [apkPath] - a bundled asset name or an absolute on-device APK path (e.g. an
+         * installed app's `publicSourceDir`) - through DCLActivity. The target activity is
+         * resolved from the APK's own manifest launcher in [onCreate].
+         */
+        fun intentForAPK(context: Context, apkPath: String): Intent {
+            return Intent(context, DCLActivity::class.java)
+                .putExtra(KEY_APK_ASSET_FILE_NAME, apkPath)
         }
 
-        fun forActivityClass(baseIntent: Intent, activityClassName: String): Intent {
+        /**
+         * Retargets [baseIntent] at the host's DCLActivity, recording the real target class as
+         * an extra.
+         */
+        fun forActivityClass(
+            baseIntent: Intent,
+            hostPackageName: String,
+            activityClassName: String
+        ): Intent {
             return baseIntent.apply {
-                component = DCLActivity::class.java.`package`?.let {
-                    ComponentName(
-                        // TODO Make this dynamically resolved
-                        "com.mikimn.apkloader",
-                        DCLActivity::class.java.name
-                    )
-                }
+                component = ComponentName(hostPackageName, DCLActivity::class.java.name)
                 putExtra(KEY_ACTIVITY_CLASS, activityClassName)
             }
         }
@@ -183,10 +160,9 @@ class DCLActivity : ComponentActivity() {
             ?: manifestReader?.getLauncherActivity()?.name
 
         if (activityClassName == null) {
-            throw IllegalArgumentException("DCLActivity must be initialized with forActivityClass only")
+            throw IllegalArgumentException("No target activity: pass $KEY_ACTIVITY_CLASS or load an APK with a launcher activity")
         }
 
-        // val applicationClassName = intent.getStringExtra(KEY_APPLICATION_CLASS)
         val applicationClassName = appInfo?.name
 
         val aInfo = manifestReader?.getActivityInfo(
