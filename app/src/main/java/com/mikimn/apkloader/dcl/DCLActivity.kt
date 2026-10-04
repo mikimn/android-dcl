@@ -37,6 +37,7 @@ import kotlinx.coroutines.delay
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import java.io.File
 import java.io.FileInputStream
+import java.lang.reflect.Field
 import java.net.URLClassLoader
 import java.util.ServiceLoader
 
@@ -410,6 +411,9 @@ class DCLActivity : ComponentActivity() {
 
     @SuppressLint("MissingSuperCall")
     override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+        // The saved state may hold the loaded app's own Parcelables (view/fragment state),
+        // which a Bundle can only unparcel with the APK's classloader, not the host's.
+        shadowActivity?.let { savedInstanceState.classLoader = it.javaClass.classLoader }
         overrideLifecycleCall("onRestoreInstanceState", Bundle::class.java to savedInstanceState)
     }
 
@@ -439,8 +443,7 @@ class DCLActivity : ComponentActivity() {
         // clears it - which the framework just ran on this host, not on the shadow that
         // actually made the request. Clear it on the shadow too, or every later
         // permission request from the loaded app is silently dropped.
-        shadowActivity?.javaClass?.tryGetField("mHasCurrentPermissionsRequest")
-            ?.setBoolean(shadowActivity, false)
+        setShadowActivityField("mHasCurrentPermissionsRequest", false)
         overrideLifecycleCall(
             "onRequestPermissionsResult",
             Int::class.javaPrimitiveType!! to requestCode,
@@ -477,9 +480,32 @@ class DCLActivity : ComponentActivity() {
         // ActivityThread updates mCurrentConfig on the Activity it knows about (this host)
         // before calling onConfigurationChanged - mirror that on the shadow first, or the
         // state sync afterwards would copy the shadow's stale configuration back over ours.
-        shadowActivity?.javaClass?.tryGetField("mCurrentConfig")
-            ?.set(shadowActivity, Configuration(newConfig))
+        setShadowActivityField("mCurrentConfig", Configuration(newConfig))
         overrideLifecycleCall("onConfigurationChanged", Configuration::class.java to newConfig)
+    }
+
+    /**
+     * Sets one of android.app.Activity's own (hidden) fields on the shadow instance.
+     * Hidden fields outside the SDK greylist aren't visible to plain reflection, so fall back
+     * to HiddenApiBypass; and log rather than silently skip if the field is gone entirely
+     * (renamed in a newer AOSP).
+     */
+    private fun setShadowActivityField(name: String, value: Any?) {
+        val shadow = shadowActivity ?: return
+        try {
+            val field = Activity::class.java.tryGetField(name)
+                ?: HiddenApiBypass.getInstanceFields(Activity::class.java)
+                    .filterIsInstance<Field>()
+                    .firstOrNull { it.name == name }
+            if (field == null) {
+                Log.w("DCLActivity", "Activity.$name not found, shadow state may be stale")
+                return
+            }
+            field.isAccessible = true
+            field.set(shadow, value)
+        } catch (e: Exception) {
+            Log.e("DCLActivity", "Failed to set Activity.$name on shadow", e)
+        }
     }
 
     private fun overrideLifecycleCall(
