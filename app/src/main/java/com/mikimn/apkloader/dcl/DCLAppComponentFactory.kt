@@ -17,9 +17,12 @@ import kotlinx.coroutines.internal.MainDispatcherFactory
 
 @SuppressLint("RestrictedApi")
 class DCLAppComponentFactory : CoreComponentFactory() {
+    /** This (host) app's own package, from the ApplicationInfo handed to instantiateClassLoader. */
+    private var hostPackageName: String? = null
 
     override fun instantiateClassLoader(cl: ClassLoader, aInfo: ApplicationInfo): ClassLoader {
         Log.e("DCLAppComponentFactory", "instantiateClassLoader")
+        hostPackageName = aInfo.packageName
         // return super.instantiateClassLoader(cl, aInfo)
         val defaultClassLoader = super.instantiateClassLoader(cl, aInfo)
         val newClassLoader = FileTrackingClassLoader(defaultClassLoader)
@@ -42,7 +45,13 @@ class DCLAppComponentFactory : CoreComponentFactory() {
         val realActivity = super.instantiateActivity(
             loader,
             DCLActivity::class.java.name,
-            DCLActivity.forActivityClass(baseIntent, activityClassName)
+            DCLActivity.forActivityClass(
+                baseIntent,
+                checkNotNull(hostPackageName ?: baseIntent.component?.packageName) {
+                    "Host package unknown: instantiateClassLoader hasn't run and $baseIntent has no component"
+                },
+                activityClassName
+            )
         ) as DCLActivity
 
         if (!baseIntent.hasExtra(DCLActivity.KEY_APK_ASSET_FILE_NAME)) {

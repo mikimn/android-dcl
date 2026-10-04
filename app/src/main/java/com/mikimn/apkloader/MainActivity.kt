@@ -48,8 +48,9 @@ import com.mikimn.apkloader.dcl.FileTrackingClassLoader
 import com.mikimn.apkloader.ui.theme.APKLoaderTheme
 
 
-// Bundled sample APKs are discovered from assets/ at runtime; this only gives them friendlier
-// tile titles. Each one's launcher activity is resolved from its own manifest.
+// Bundled sample APKs are discovered from assets/ at runtime - every *.apk asset gets a tile,
+// including any non-sample APK later added there; this map only gives them friendlier tile
+// titles. Each one's launcher activity is resolved from its own manifest.
 private val TEST_APK_DISPLAY_NAMES = mapOf(
     "calculator.apk" to "Calculator",
     "simple.apk" to "Simple App",
