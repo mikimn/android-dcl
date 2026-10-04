@@ -81,9 +81,11 @@ manifest from that era.
 `LoadedApk.load()` writes the APK bytes to a temp file, extracts it into a per-APK cache dir
 (`utils/Zip`), discovers `split_config.*.apk` siblings when loaded from an install dir, builds an
 `InMemoryDexClassLoader` (parent: the host classloader's parent) whose native library path is the
-install dir's `lib/`, extracted split `lib/` dirs, and the base APK's own extracted `lib/<abi>` for the
-host process's most-preferred ABI (32-bit-only libs can't load in a 64-bit host), and registers `ResourcesProvider`s (base +
-splits, as APK and as extracted directory) via the Android 11+ `ResourcesLoader` API —
+install dir's `lib/`, the extracted split `lib/` dirs, and the base APK's own extracted
+`lib/<abi>` for the host process's most-preferred ABI. 32-bit-only libs can't load in a 64-bit
+host; `LoadedApk` logs a warning when an APK ships libs but none match. It then registers
+`ResourcesProvider`s (base + splits, as APK and as extracted directory) via the Android 11+
+`ResourcesLoader` API —
 **this, not the classic package-ID resource trick, is why `minSdk = 30`.** The host's own
 resources use package id `0x8f` (`androidResources.additionalParameters`) so they never collide
 with a loaded app's `0x7f`. `FileTrackingClassLoader` is installed as the process's classloader
