@@ -78,12 +78,16 @@ class DCLActivity : ComponentActivity() {
         }
 
         /**
-         * Retargets [baseIntent] at DCLActivity in the same (host) package it was already
-         * addressed to, recording the real target class as an extra.
+         * Retargets [baseIntent] at the host's DCLActivity, recording the real target class as
+         * an extra.
          */
-        fun forActivityClass(baseIntent: Intent, activityClassName: String): Intent {
+        fun forActivityClass(
+            baseIntent: Intent,
+            hostPackageName: String,
+            activityClassName: String
+        ): Intent {
             return baseIntent.apply {
-                component = component?.let { ComponentName(it.packageName, DCLActivity::class.java.name) }
+                component = ComponentName(hostPackageName, DCLActivity::class.java.name)
                 putExtra(KEY_ACTIVITY_CLASS, activityClassName)
             }
         }
