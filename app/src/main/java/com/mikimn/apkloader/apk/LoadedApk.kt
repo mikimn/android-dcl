@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.ParcelFileDescriptor.MODE_READ_ONLY
 import android.os.Process
+import android.util.Log
 import com.mikimn.apkloader.reflection.tryGetMethod
 import com.mikimn.apkloader.utils.Zip
 import dalvik.system.InMemoryDexClassLoader
@@ -139,9 +140,21 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
      */
     private fun primaryAbiDir(libDir: File): File? {
         val processAbis = if (Process.is64Bit()) Build.SUPPORTED_64_BIT_ABIS else Build.SUPPORTED_32_BIT_ABIS
-        return processAbis
+        val match = processAbis
             .map { File(libDir, it) }
             .firstOrNull { it.isDirectory }
+
+        if (match == null) {
+            val shippedAbis = libDir.listFiles { f -> f.isDirectory }?.map { it.name }.orEmpty()
+            if (shippedAbis.isNotEmpty()) {
+                Log.w(
+                    "LoadedApk",
+                    "$name ships native libs for $shippedAbis, none loadable in this " +
+                        "${if (Process.is64Bit()) "64" else "32"}-bit process (${processAbis.toList()})"
+                )
+            }
+        }
+        return match
     }
 
     private fun buildClassLoader(
