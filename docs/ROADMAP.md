@@ -1,33 +1,33 @@
 # Generalization roadmap
 
 What still stands between this loader and running arbitrary apps, ordered by complexity.
-Each entry is written as a self-contained GitHub issue (title + body) so it can be filed as-is.
+Each entry is tracked as a GitHub issue (Issue column); the bodies below mirror them.
 Tiers: **1** small, local fixes · **2** moderate virtualization-layer work · **3** large, needs new
 system-interface hooks · **4** needs pre-declared system-bound stubs · **5** needs root/platform
 signing (documented for completeness; likely won't fix).
 
-| # | Tier | Item | Status |
-| --- | --- | --- | --- |
-| R1 | 1 | [Forward result/permission/intent/config callbacks from DCLActivity to the shadow Activity](#r1) | open |
-| R2 | 1 | [Load native libraries bundled inside a standalone APK](#r2) | open |
-| R3 | 1 | [Remove hardcoded entry points, activity whitelist and host package name](#r3) | open |
-| R4 | 1 | [Survive process death: reload the APK when a proxy activity is restored](#r4) | open |
-| R5 | 2 | [Complete PackageManager answers for loaded packages](#r5) | open |
-| R6 | 2 | [Per-package data directory isolation](#r6) | open |
-| R7 | 2 | [Point ApplicationInfo paths at the loaded APK and use a file-backed dex loader](#r7) | open |
-| R8 | 2 | [Honor launchMode, flags and per-activity attributes in proxy activities](#r8) | open |
-| R9 | 2 | [Fix ContentProvider initialization order and context](#r9) | open |
-| R10 | 2 | [Support multiple loaded APKs concurrently](#r10) | open |
-| R11 | 3 | [Services: in-process Service lifecycle via a proxy service pool](#r11) | open |
-| R12 | 3 | [Register manifest-declared broadcast receivers](#r12) | open |
-| R13 | 3 | [Rewrite PendingIntents (notifications, alarms, shortcuts) to proxy components](#r13) | open |
-| R14 | 3 | [Support android:process multi-process components](#r14) | open |
-| R15 | 3 | [Harden hidden-API reflection across Android versions](#r15) | open |
-| R16 | 4 | [System-bound components (widgets, IME, accessibility, wallpaper, tiles, …)](#r16) | open |
-| R17 | 5 | [Package/signature-bound Google services (Play Services, Sign-In, FCM, Billing, Integrity)](#r17) | open |
-| R18 | 5 | [Signature/privileged permissions](#r18) | open |
-| R19 | 5 | [Anti-tamper, installer verification, DRM and uid-bound Keystore](#r19) | open |
-| R20 | 5 | [Shared uid: permissions, notifications and targetSdk are the host's](#r20) | open |
+| # | Issue | Tier | Item | Status |
+| --- | --- | --- | --- | --- |
+| R1 | #13 | 1 | [Forward result/permission/intent/config callbacks from DCLActivity to the shadow Activity](#r1) | open |
+| R2 | #14 | 1 | [Load native libraries bundled inside a standalone APK](#r2) | open |
+| R3 | #15 | 1 | [Remove hardcoded entry points, activity whitelist and host package name](#r3) | open |
+| R4 | #16 | 1 | [Survive process death: reload the APK when a proxy activity is restored](#r4) | open |
+| R5 | #17 | 2 | [Complete PackageManager answers for loaded packages](#r5) | open |
+| R6 | #18 | 2 | [Per-package data directory isolation](#r6) | open |
+| R7 | #19 | 2 | [Point ApplicationInfo paths at the loaded APK and use a file-backed dex loader](#r7) | open |
+| R8 | #20 | 2 | [Honor launchMode, flags and per-activity attributes in proxy activities](#r8) | open |
+| R9 | #21 | 2 | [Fix ContentProvider initialization order and context](#r9) | open |
+| R10 | #22 | 2 | [Support multiple loaded APKs concurrently](#r10) | open |
+| R11 | #23 | 3 | [Services: in-process Service lifecycle via a proxy service pool](#r11) | open |
+| R12 | #24 | 3 | [Register manifest-declared broadcast receivers](#r12) | open |
+| R13 | #25 | 3 | [Rewrite PendingIntents (notifications, alarms, shortcuts) to proxy components](#r13) | open |
+| R14 | #26 | 3 | [Support android:process multi-process components](#r14) | open |
+| R15 | #27 | 3 | [Harden hidden-API reflection across Android versions](#r15) | open |
+| R16 | #28 | 4 | [System-bound components (widgets, IME, accessibility, wallpaper, tiles, …)](#r16) | open |
+| R17 | #29 | 5 | [Package/signature-bound Google services (Play Services, Sign-In, FCM, Billing, Integrity)](#r17) | open |
+| R18 | #30 | 5 | [Signature/privileged permissions](#r18) | open |
+| R19 | #31 | 5 | [Anti-tamper, installer verification, DRM and uid-bound Keystore](#r19) | open |
+| R20 | #32 | 5 | [Shared uid: permissions, notifications and targetSdk are the host's](#r20) | open |
 
 <a id="r1"></a>
 ### R1. [Tier 1] Forward result/permission/intent/config callbacks from DCLActivity to the shadow Activity
