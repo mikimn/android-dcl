@@ -55,8 +55,9 @@ Real-APK test results, and the root-cause write-ups behind most fixes, are recor
    absolute device path) and loads it via `FileTrackingClassLoader.addApkFile` → `LoadedApk.load()`
    and registers a `ManifestAwarePlugin`, or reuses an already-loaded APK (`KEY_LOADED_APK_NAME`,
    set by the ATM hook). Both extras hold a `LoadedApk.name`, so an activity restored into a fresh
-   process after process death simply reloads its APK by name. It then resolves the target activity (explicit extra, else the manifest
-   launcher — including `<activity-alias>` launchers), instantiates the APK's content providers,
+   process after process death simply reloads its APK by name. It then resolves the target
+   activity (explicit extra, else the manifest launcher — including `<activity-alias>`
+   launchers), instantiates the APK's content providers,
    creates or reuses the **one** shadow `Application` per `LoadedApk`, and uses `ShadowActivity`
    to reflectively call the hidden `Activity.attach(...)` + `Instrumentation.callActivityOnCreate`
    on the real external Activity instance, sharing the host's window and token. Lifecycle callbacks

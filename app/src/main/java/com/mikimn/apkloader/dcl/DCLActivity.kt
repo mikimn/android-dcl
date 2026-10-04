@@ -245,9 +245,9 @@ class DCLActivity : ComponentActivity() {
                 }
 
                 // The saved state may hold the loaded app's own Parcelables (view/fragment state),
-        // which a Bundle can only unparcel with the APK's classloader, not the host's.
-        savedInstanceState?.classLoader = loadedApk.loader
-        initShadowActivity(shadowActivity!!, shadowApp, newActivityInfo, savedInstanceState)
+                // which a Bundle can only unparcel with the APK's classloader, not the host's.
+                loadedApk.loader?.let { savedInstanceState?.classLoader = it }
+                initShadowActivity(shadowActivity!!, shadowApp, newActivityInfo, savedInstanceState)
 
                 isWaitingOnHandler = false;
             }
