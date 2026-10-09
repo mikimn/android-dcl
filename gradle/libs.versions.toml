@@ -16,6 +16,8 @@ testRules = "1.5.0"
 testServices = "1.4.2"
 orchestrator = "1.4.2"
 truth = "1.4.2"
+robolectric = "4.12.2"
+testCore = "1.5.0"
 androidxTruth = "1.5.0"
 uiautomator = "2.3.0"
 espressoIntents = "3.5.1"
@@ -48,6 +50,8 @@ androidx-test-services = { group = "androidx.test.services", name = "test-servic
 androidx-test-ext-truth = { group = "androidx.test.ext", name = "truth", version.ref = "androidxTruth" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 androidx-espresso-intents = { group = "androidx.test.espresso", name = "espresso-intents", version.ref = "espressoIntents" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "testCore" }
 truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
 
 [plugins]

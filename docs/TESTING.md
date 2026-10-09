@@ -20,6 +20,29 @@ layer over real third-party APKs.
   -Pandroid.testInstrumentationRunnerArguments.class=com.mikimn.apkloader.HostAppSmokeTest
 ```
 
+## JVM unit tests (layer A)
+
+`./gradlew testDebugUnitTest` (no device). Plain JUnit + Truth for pure logic (`Zip`, `FieldMapper`,
+`DCLActivityProxyPool`, `CallerClassResolver`). Robolectric (SDK 34) is used only where a real
+`PackageManager` is needed (`PackageManagerAggregate`, `PlayServicesBlockingPackageManager`,
+`DefaultPackageManagerPlugin`). Constraints:
+
+- Robolectric tests must use `@Config(manifest = Config.NONE, application = Application::class)`.
+  The app's resource APK is built with `--package-id 0x8f`, which Robolectric's package parser
+  rejects, and the manifest's `DCLApplication` is unwanted anyway.
+- `AndroidManifestReader` needs a real `Resources`/XML parser, so it is covered by the on-device
+  Tier 0 tests rather than here.
+
+**Known-gap baseline.** `PackageManagerWrapperCompletenessTest` reflects over the SDK's
+`PackageManager` and requires the wrapper to override every concrete public method (otherwise the
+caller hits the base-class `UnsupportedOperationException` stub). Methods not yet overridden are
+listed in `app/src/test/resources/package-manager-wrapper-known-gaps.txt`; the test fails on any
+*new* gap and on any listed method that has since been fixed, so the list can only shrink.
+
+**Known bugs as `@Ignore`d tests.** A test that encodes the desired behavior of a known bug is kept
+`@Ignore`d with the reason (e.g. `ZipTest.rejectsEntriesEscapingOutputDir`, zip-slip); remove the
+`@Ignore` in the PR that fixes it.
+
 ## Fixture APKs
 
 Fixtures are tiny, dependency-free apps (framework classes only, Java) under `fixtures/<name>/`,
