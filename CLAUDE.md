@@ -28,6 +28,7 @@ scripts/test-apk.sh path/to/app.apk [activityClassName]   # push + launch a real
 
 There is no CI and no CLI-runnable emulator config baked into the repo — instrumented tests and
 manual verification require a connected device/emulator at API level ≥ 30 (see `minSdk` below).
+Test layout, process-isolation rules and the shared helpers are in [`docs/TESTING.md`](docs/TESTING.md).
 Real-APK test results, and the root-cause write-ups behind most fixes, are recorded in
 [`docs/apk-test-log.md`](docs/apk-test-log.md) — add a row there when testing a new APK.
 
