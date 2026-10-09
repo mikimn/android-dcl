@@ -41,3 +41,17 @@ test's loaded APK can never leak into the next. Consequences:
 - `LogcatCrashRule` - fails a test if the process logged a `FATAL EXCEPTION` that didn't kill it.
 
 `TestInfrastructureTest` tests these helpers themselves.
+
+## Two copies of host classes (gotcha)
+
+`DCLAppComponentFactory` installs a `FileTrackingClassLoader` as the host's class loader, but the
+test APK is loaded by its own loader. Host classes referenced directly from test code can
+therefore resolve to a **different `Class` instance** than the one the running app uses
+(observed: `isInstanceOf(DCLApplication::class.java)` fails with "expected DCLApplication but was
+DCLApplication"). Rules for tests:
+
+- Don't `isInstanceOf` / cast host types; compare `javaClass.name`.
+- Don't read or write host companion/static state (e.g. `DCLContext.shadowApp`) directly: you may
+  be touching a second copy. Drive the app through intents (`DCLActivity.intentForAPK` only builds
+  an `Intent`, which is safe) and observe it through `ProbeChannel`, the UI or `targetContext.classLoader`
+  reflection.
