@@ -58,10 +58,17 @@ class AndroidManifestReaderTest {
         assertThat(md.getString("fx.string")).isEqualTo("hello")
         assertThat(md.getInt("fx.int")).isEqualTo(42)
         assertThat(md.get("fx.int")).isInstanceOf(Integer::class.java)
-        assertThat(md.getLong("fx.long")).isEqualTo(5_000_000_000L)
-        assertThat(md.get("fx.long")).isInstanceOf(java.lang.Long::class.java)
         assertThat(md.getFloat("fx.float")).isEqualTo(1.5f)
         assertThat(md.getBoolean("fx.bool")).isTrue()
+    }
+
+    // aapt2 cannot encode an integer literal beyond int32 in binary XML, so android:value="5000000000"
+    // reaches the reader as a float attribute (the platform's own parser sees the same). The
+    // reader's Long branch is therefore unreachable for compiled manifests; assert what is stored.
+    @Test fun metaDataIntegerBeyondInt32ArrivesAsFloat() {
+        val md = reader("fx-manifest.apk").getApplicationInfo().metaData
+        assertThat(md.get("fx.long")).isInstanceOf(java.lang.Float::class.java)
+        assertThat(md.getFloat("fx.long")).isEqualTo(5.0e9f)
     }
 
     @Test fun metaDataResourceReferencesAreResolved() {
