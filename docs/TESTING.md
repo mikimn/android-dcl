@@ -23,10 +23,13 @@ layer over real third-party APKs.
 ## JVM unit tests (layer A)
 
 `./gradlew testDebugUnitTest` (no device). Plain JUnit + Truth for pure logic (`Zip`, `FieldMapper`,
-`DCLActivityProxyPool`, `CallerClassResolver`). Robolectric (SDK 34) is used only where a real
+`DCLActivityProxyPool`, `CallerClassResolver`). Robolectric 4.12.2 is used only where a real
 `PackageManager` is needed (`PackageManagerAggregate`, `PlayServicesBlockingPackageManager`,
 `DefaultPackageManagerPlugin`). Constraints:
 
+- Robolectric tests run under **SDK 34** (`@Config(sdk = [34])`, matching `compileSdk`; 4.12.2 supports
+  it). That choice only affects the Robolectric-backed base `PackageManager`; the completeness test
+  below reflects over the compile-time `android.jar` (also API 34) and does not use Robolectric.
 - Robolectric tests must use `@Config(manifest = Config.NONE, application = Application::class)`.
   The app's resource APK is built with `--package-id 0x8f`, which Robolectric's package parser
   rejects, and the manifest's `DCLApplication` is unwanted anyway.
