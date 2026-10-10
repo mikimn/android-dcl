@@ -1,21 +1,16 @@
 package com.mikimn.apkloader.pm
 
 import android.content.ComponentName
-import android.content.IntentSender
-import android.content.pm.ModuleInfo
-import android.content.res.Configuration
-import android.os.Bundle
-import java.security.cert.Certificate
-import java.util.concurrent.Executor
-import java.util.function.Consumer
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.IntentSender
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.ChangedPackages
 import android.content.pm.FeatureInfo
 import android.content.pm.InstallSourceInfo
 import android.content.pm.InstrumentationInfo
+import android.content.pm.ModuleInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageItemInfo
@@ -27,15 +22,20 @@ import android.content.pm.ResolveInfo
 import android.content.pm.ServiceInfo
 import android.content.pm.SharedLibraryInfo
 import android.content.pm.VersionedPackage
+import android.content.res.Configuration
 import android.content.res.Resources
 import android.content.res.XmlResourceParser
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
+import android.os.Bundle
 import android.os.UserHandle
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.os.bundleOf
 import com.mikimn.apkloader.reflection.tryGetMethod
+import java.security.cert.Certificate
+import java.util.concurrent.Executor
+import java.util.function.Consumer
 
 open class PackageManagerWrapper(private val basePM: PackageManager) : PackageManager() {
     private inline fun logCurrentMethod(vararg args: Any) {
@@ -647,6 +647,18 @@ open class PackageManagerWrapper(private val basePM: PackageManager) : PackageMa
 
     // ---- Overrides added so no concrete PackageManager method falls through to the base-class
     // ---- "not implemented" stub (enforced by PackageManagerWrapperCompletenessTest).
+    //
+    // Everything below is a plain pass-through to the host's real PackageManager, with two
+    // consequences to keep in mind:
+    //  * The *mutators* (setComponentEnabledSettings, setMimeGroup, setAutoRevokeWhitelisted,
+    //    add/removeWhitelistedRestrictedPermission, relinquishUpdateOwnership, requestChecksums)
+    //    act on the HOST package's state on behalf of loaded code. Before, they threw; this is the
+    //    same shared-identity model as every other call here (see "All loaded apps share the
+    //    host's data directory, uid and granted permissions" in CLAUDE.md).
+    //  * Queries keyed by the *loaded* app's package (getPackageUid, getTargetSdkVersion,
+    //    getPackageGids, getProperty, ...) hit the real PM and throw NameNotFoundException, since
+    //    the loaded package is not installed. That only fixes the "not implemented stub" crash;
+    //    answering them for loaded packages is roadmap item R5 (docs/ROADMAP.md, #17).
 
     @RequiresApi(33)
     override fun getLaunchIntentSenderForPackage(p0: String): IntentSender {

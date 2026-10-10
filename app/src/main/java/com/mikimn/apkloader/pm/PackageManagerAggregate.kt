@@ -99,7 +99,9 @@ class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManage
     // API 33 added `*Flags` overloads of the lookups above. Apps targeting 33+ call those, and the
     // base-class wrapper would hand them straight to the real PackageManager, silently bypassing
     // every plugin (e.g. ManifestAwarePlugin). Route them through the Int-flag versions, which is
-    // what the framework itself does (flags.getValue() narrowed to int).
+    // what the framework itself does. `flags.value` is a Long; `.toInt()` deliberately truncates
+    // it to the low 32 bits exactly like the framework's own `(int) flags.getValue()`, so any
+    // flag above bit 31 is dropped here as it would be there.
     @RequiresApi(33)
     override fun getActivityInfo(p0: ComponentName, p1: ComponentInfoFlags): ActivityInfo =
         getActivityInfo(p0, p1.value.toInt())
