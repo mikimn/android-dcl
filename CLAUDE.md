@@ -116,7 +116,8 @@ and delegates `loadClass` across every APK it has loaded, falling back to the ho
 ### `reflection/` and `shadow/`
 
 `reflection.FieldMapper` / `ReflectionUtils` are the low-level reflective field/method access
-helpers everything above is built on (`HiddenApiBypass` from lsposed for hidden methods).
+helpers everything above is built on (`HiddenApiBypass` from lsposed for hidden methods). Keep `HiddenApiBypass` current:
+4.3 reads ART's class layout through `Unsafe` and segfaults on Android 16 (fixed by 6.1).
 `shadow.ShadowActivity` / `ShadowApplication` use them to reach hidden AOSP fields
 (`mMainThread`, `mInstrumentation`, `mPackageInfo`, `mInitialApplication`) and hidden methods
 (`Activity.attach`, invoked positionally) — inherently fragile across OS versions, which is also

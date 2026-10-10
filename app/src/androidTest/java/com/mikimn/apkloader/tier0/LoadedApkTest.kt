@@ -197,7 +197,7 @@ class LoadedApkTest {
         val titleId = fx.id(pkg, "string", "title")
         assertThat(titleId).isNotEqualTo(0)
         assertThat(titleId ushr 24).isEqualTo(0x7f)
-        assertThat(fx.resources.getString(titleId)).isEqualTo("fx-resources title")
+        assertThat(fx.resources.getString(titleId)).isEqualTo(fx.expectedFxResourcesTitle())
     }
 
     @Test fun hostAndLoadedPackageIdsDoNotCollide() {
@@ -281,6 +281,22 @@ class LoadedApkTest {
         }
     }.toByteArray()
 
+    // A hostile archive is rejected by our own zip-slip guard (SecurityException) - or, where the
+    // platform validates entry names itself, already by ZipFile while it opens the archive
+    // (ZipException: invalid entry path; ZipPathValidator, Android 14+, observed on API 36). Below
+    // API 34 only our guard can reject it, so the test is strict there and pins the guard; on newer
+    // Android either rejection satisfies it (the JVM ZipTest still covers the guard directly). Not
+    // run on API 34/35. In every case load() must fail loudly and, in the tests below, nothing may be
+    // written outside, registered, or left behind.
+    private fun assertHostileRejected(block: () -> Unit) {
+        val e = assertThrows(Exception::class.java) { block() }
+        if (android.os.Build.VERSION.SDK_INT < 34) {
+            assertThat(e).isInstanceOf(SecurityException::class.java)
+        } else {
+            assertThat(e is SecurityException || e is java.util.zip.ZipException).isTrue()
+        }
+    }
+
     @Test fun apkWithPathTraversalEntryFailsLoudlyAndWritesNothingOutside() {
         val evil = zipWithEntry("../../escaped.txt")
         // The traversal is resolved against the per-APK cache dir (<tmpdir>/cache-evil.apk), so
@@ -294,7 +310,7 @@ class LoadedApkTest {
         assertThat(escapeDir.canWrite()).isTrue()
         escapeTarget.delete()
 
-        assertThrows(SecurityException::class.java) {
+        assertHostileRejected {
             fx.loadedApk("evil.apk").load(evil, fx.resources)
         }
 
@@ -304,7 +320,7 @@ class LoadedApkTest {
     }
 
     @Test fun hostileApkLeavesNoHalfExtractedCacheDir() {
-        assertThrows(SecurityException::class.java) {
+        assertHostileRejected {
             fx.loadedApk("evil.apk").load(zipWithEntry("../../escaped.txt"), fx.resources)
         }
         assertThat(cacheDir("evil.apk").exists()).isFalse()
@@ -312,14 +328,14 @@ class LoadedApkTest {
 
     @Test fun fileEntryResolvingToTheExtractionDirIsRejectedAndCleanedUp() {
         // "a/.." is a *file* entry that resolves to the extraction dir itself
-        assertThrows(SecurityException::class.java) {
+        assertHostileRejected {
             fx.loadedApk("evil.apk").load(zipWithEntry("a/.."), fx.resources)
         }
         assertThat(cacheDir("evil.apk").exists()).isFalse()
     }
 
     @Test fun hostileApkIsNeverRegisteredWithTheClassLoader() {
-        assertThrows(SecurityException::class.java) {
+        assertHostileRejected {
             fx.loader.addApkFile("evil.apk", zipWithEntry("../../escaped.txt"), fx.resources)
         }
         assertThat(fx.loader.apkFile("evil.apk")).isNull()
@@ -330,8 +346,42 @@ class LoadedApkTest {
 
     @Test fun failedLoadLeavesTheLoadedApkUnusable() {
         val apk = fx.loadedApk("evil.apk")
-        assertThrows(SecurityException::class.java) { apk.load(zipWithEntry("../../escaped.txt"), fx.resources) }
+        assertHostileRejected { apk.load(zipWithEntry("../../escaped.txt"), fx.resources) }
         assertThat(apk.loader).isNull()
         assertThrows(IllegalStateException::class.java) { apk.loadClass("com.example.Anything") }
+    }
+
+    // Steps run in order: resources are attached to the host's Resources before the manifest is
+    // parsed, so a bad manifest must not leave a loader behind whose providers point at deleted files.
+    @Test fun aCorruptManifestLeavesNoResourcesLoaderAttachedAndNoCacheDir() {
+        val pkg = "com.mikimn.fixture.resources"
+        val corrupt = FixtureApks.install("fx-resources.apk").readBytes().let { original ->
+            val out = java.io.ByteArrayOutputStream()
+            java.util.zip.ZipInputStream(original.inputStream()).use { zin ->
+                java.util.zip.ZipOutputStream(out).use { zout ->
+                    generateSequence { zin.nextEntry }.forEach { entry ->
+                        zout.putNextEntry(java.util.zip.ZipEntry(entry.name))
+                        zout.write(if (entry.name == "AndroidManifest.xml") ByteArray(64) { 7 } else zin.readBytes())
+                        zout.closeEntry()
+                    }
+                }
+            }
+            out.toByteArray()
+        }
+        assertThat(fx.id(pkg, "string", "title")).isEqualTo(0) // not loaded yet
+
+        val bad = fx.loadedApk("corrupt-manifest.apk")
+        assertThrows(Throwable::class.java) { bad.load(corrupt, fx.resources) }
+
+        assertThat(fx.id(pkg, "string", "title")).isEqualTo(0) // the loader was detached again
+        assertThat(bad.loader).isNull()
+        assertThat(bad.paths).isNull()
+        assertThat(bad.manifestReader).isNull()
+        assertThat(cacheDir("corrupt-manifest.apk").exists()).isFalse()
+
+        // Control: the same procedure with an intact manifest does make the id resolvable, so the
+        // 0 above really is the detach, not a load that never got as far as attaching.
+        fx.load("fx-resources.apk")
+        assertThat(fx.id(pkg, "string", "title")).isNotEqualTo(0)
     }
 }
