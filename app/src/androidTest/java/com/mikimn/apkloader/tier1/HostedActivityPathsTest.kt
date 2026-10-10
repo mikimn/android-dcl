@@ -50,4 +50,19 @@ class HostedActivityPathsTest {
         // and the data dir reported with it is the per-package one (#18), patched together with the code paths
         assertThat(probe.valueOf("path.dataDir")).isEqualTo(File(File(target.dataDir, "virtual"), loadedPackage).path)
     }
+
+    // Platform code is handed the loaded app's Context, which now reports the loaded APK's paths; make
+    // sure it still works (WebView resolves assets and its own package through the Context it is given).
+    @Test fun aHostedActivityCanStillUseAWebViewWithThePatchedPaths() {
+        target.startActivity(
+            DCLActivity.intentForAPK(target, FixtureApks.install("fx-hello.apk").path)
+                .putExtra("fx.webview", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        probe.awaitEvent("onResume")
+        // the page finished loading and WebView read its title back
+        probe.awaitEvents("the WebView page to finish loading", timeoutMs = 30_000) { it.any { e -> e.startsWith("webview.finished=") } }
+        assertThat(probe.valueOf("webview.finished")).isEqualTo("fx-webview")
+        // ...with the paths still the loaded APK's (nothing reset them)
+        assertThat(probe.valueOf("path.code")).isNotEqualTo(target.packageCodePath)
+    }
 }

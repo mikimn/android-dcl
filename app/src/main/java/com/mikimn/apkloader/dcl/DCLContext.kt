@@ -36,6 +36,12 @@ class DCLContext(
     private val virtualPackage: String? = null,
     private val loadedPaths: LoadedApk.Paths? = null
 ) : ContextWrapper(base) {
+    init {
+        // The paths only take effect together with the per-package storage (getApplicationInfo() is
+        // patched only for a virtual package), so a context given paths alone would silently ignore them.
+        require(loadedPaths == null || virtualPackage != null) { "loadedPaths requires virtualPackage" }
+    }
+
     companion object {
         private var shadowPackageName: String? = null
         var shadowApp: Application? = null
@@ -201,7 +207,7 @@ class DCLContext(
                 info.sourceDir = paths.apk.path
                 info.publicSourceDir = paths.apk.path
                 info.splitSourceDirs = paths.splits.map { it.path }.toTypedArray().takeIf { it.isNotEmpty() }
-                info.splitPublicSourceDirs = info.splitSourceDirs
+                info.splitPublicSourceDirs = info.splitSourceDirs?.clone() // a copy: callers may mutate one
                 paths.nativeLibraryDir?.let { info.nativeLibraryDir = it.path }
             }
         }

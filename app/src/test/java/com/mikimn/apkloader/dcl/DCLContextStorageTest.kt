@@ -141,4 +141,19 @@ class DCLContextStorageTest {
         assertThat(c.applicationInfo.splitSourceDirs).isNull()
         assertThat(c.applicationInfo.nativeLibraryDir).isEqualTo(host.applicationInfo.nativeLibraryDir) // none given: unchanged
     }
+
+    @Test fun pathsWithoutAPackageAreRejectedNotSilentlyIgnored() {
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            DCLContext(host, loadedPaths = LoadedApk.Paths(java.io.File("/c/x.apk"), emptyList(), null))
+        }
+    }
+
+    @Test fun theTwoSplitArraysAreIndependentCopies() {
+        val split = java.io.File("/install/split_config.en.apk")
+        val info = DCLContext(host, virtualPackage = "pkg.a", loadedPaths = LoadedApk.Paths(java.io.File("/c/x.apk"), listOf(split), null)).applicationInfo
+        assertThat(info.splitPublicSourceDirs).asList().containsExactly(split.path)
+        assertThat(info.splitPublicSourceDirs).isNotSameInstanceAs(info.splitSourceDirs)
+        info.splitPublicSourceDirs!![0] = "mutated"
+        assertThat(info.splitSourceDirs!![0]).isEqualTo(split.path)
+    }
 }

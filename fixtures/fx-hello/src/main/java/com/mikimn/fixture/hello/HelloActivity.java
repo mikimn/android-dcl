@@ -30,6 +30,19 @@ public class HelloActivity extends Activity {
         Probe.value(this, CHANNEL, "path.sourceDir", getApplicationInfo().sourceDir);
         Probe.value(this, CHANNEL, "path.publicSourceDir", getApplicationInfo().publicSourceDir);
         Probe.value(this, CHANNEL, "path.dataDir", getApplicationInfo().dataDir);
+        if (getIntent().getBooleanExtra("fx.webview", false)) {
+            // Platform code (WebView) is handed this activity's Context: it must keep working when the
+            // Context reports the loaded app's own code paths instead of the host's.
+            android.webkit.WebView web = new android.webkit.WebView(this);
+            web.setWebViewClient(new android.webkit.WebViewClient() {
+                @Override public void onPageFinished(android.webkit.WebView view, String url) {
+                    Probe.value(HelloActivity.this, CHANNEL, "webview.finished", view.getTitle());
+                }
+            });
+            setContentView(web);
+            web.loadDataWithBaseURL(null, "<html><head><title>fx-webview</title></head><body>hi</body></html>", "text/html", "UTF-8", null);
+            return;
+        }
         TextView text = new TextView(this);
         text.setText("hello from fx-hello");
         setContentView(text);
