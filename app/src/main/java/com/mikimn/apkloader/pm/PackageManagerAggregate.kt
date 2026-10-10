@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
+import android.content.pm.InstallSourceInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.ProviderInfo
@@ -195,6 +196,11 @@ class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManage
     @RequiresApi(33)
     override fun resolveService(p0: Intent, p1: ResolveInfoFlags): ResolveInfo? =
         resolveService(p0, p1.value.toInt())
+
+    override fun getInstallSourceInfo(p0: String): InstallSourceInfo {
+        for (plugin in pluginList) plugin.getInstallSourceInfo(p0)?.let { return it }
+        return super.getInstallSourceInfo(p0)
+    }
 
     fun addPlugin(plugin: PackageManagerPlugin) {
         pluginList.add(0, plugin)

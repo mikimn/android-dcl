@@ -221,4 +221,24 @@ class PackageManagerAggregateTest {
         assertThat(agg.getLaunchIntentForPackage("x.pkg")?.action).isEqualTo("launch-one")
         assertThat(agg.getLaunchIntentForPackage("no.such.pkg.anywhere")).isEqualTo(base.getLaunchIntentForPackage("no.such.pkg.anywhere"))
     }
+
+    // --- install source ---
+
+    @Test fun installSourceComesFromThePluginForItsOwnPackage() {
+        // InstallSourceInfo's constructor is hidden; Robolectric runs the real framework class.
+        val ctor = android.content.pm.InstallSourceInfo::class.java.declaredConstructors.maxByOrNull { it.parameterCount }!!
+        ctor.isAccessible = true
+        val own = ctor.newInstance(*ctor.parameterTypes.map { if (it == Int::class.javaPrimitiveType) 0 else null }.toTypedArray())
+            as android.content.pm.InstallSourceInfo
+        val plugin = object : PackageManagerPlugin by FakePlugin("x.pkg", "x") {
+            override fun getInstallSourceInfo(packageName: String) = if (packageName == "x.pkg") own else null
+        }
+        assertThat(aggregate(plugin).getInstallSourceInfo("x.pkg")).isSameInstanceAs(own)
+    }
+
+    @Test fun installSourceForAnUnknownPackageStillFailsLikeThePlatform() {
+        assertThrows(PackageManager.NameNotFoundException::class.java) {
+            aggregate(FakePlugin("a.pkg", "a")).getInstallSourceInfo("nope.nope.nope")
+        }
+    }
 }

@@ -3,6 +3,7 @@ package com.mikimn.apkloader.dcl
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.util.Log
 import com.mikimn.apkloader.apk.LoadedApk
 import com.mikimn.apkloader.apk.ManifestAwarePlugin
@@ -38,7 +39,17 @@ object ApkLoading {
         val loadedApk = loader.addApkFile(apkName, apkData, context.resources)
 
         (context.packageManager as? PackageManagerAggregate)
-            ?.addPlugin(ManifestAwarePlugin(loadedApk.manifestReader!!))
+            ?.addPlugin(
+                ManifestAwarePlugin(loadedApk.manifestReader!!) {
+                    // Only the platform can verify an APK's signing data, from the persisted copy.
+                    loadedApk.paths?.let { paths ->
+                        @Suppress("DEPRECATION")
+                        context.packageManager.getPackageArchiveInfo(
+                            paths.apk.path, PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+                        )
+                    }
+                }
+            )
 
         return loadedApk
     }
