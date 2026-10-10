@@ -90,7 +90,11 @@ dependencies {
 // ---- Fixture APKs -> androidTest assets ------------------------------------------------------
 // Each fixture module is built as a normal debug APK and copied to assets/fixtures/<name>.apk of
 // the androidTest source set, where FixtureApks picks it up.
-val fixtureNames = listOf("fx-hello", "fx-resources", "fx-application")
+// Derived from the :fixtures subprojects declared in settings.gradle.kts, so the two cannot drift.
+val fixtureNames = rootProject.subprojects
+    .filter { it.path.startsWith(":fixtures:") }
+    .map { it.name }
+    .sorted()
 val fixtureAssetsDir = layout.buildDirectory.dir("generated/fixtures")
 
 val syncFixtureApks = tasks.register<Sync>("syncFixtureApks") {

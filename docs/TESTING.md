@@ -36,8 +36,8 @@ They keep the default resource package id `0x7f`, which must coexist with the ho
 Fixtures report what they saw through `fixtures/common`'s `Probe` (file under the shared
 `filesDir`; the test reads it with `ProbeChannel`). To add a fixture: create `fixtures/<name>`
 (copy an existing `build.gradle.kts`, use a unique `com.mikimn.fixture.*` namespace), then add it
-to `settings.gradle.kts` and `fixtureNames` in `app/build.gradle.kts`, and a row to
-`FixtureApksTest`. Note `Probe` is compiled into every fixture; only one loaded APK is active at
+to `settings.gradle.kts` (the app module picks fixtures up from the `:fixtures:*` subprojects
+automatically), and add a row to `FixtureApksTest`. Note `Probe` is compiled into every fixture; only one loaded APK is active at
 a time, so the duplicate class names don't clash.
 
 `FixtureApksTest` validates fixtures with the framework parser, independent of the loader, so a
