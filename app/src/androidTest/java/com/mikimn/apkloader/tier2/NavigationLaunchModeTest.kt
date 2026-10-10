@@ -24,7 +24,8 @@ import org.junit.runner.RunWith
 class NavigationLaunchModeTest {
     @get:Rule val crashRule = LogcatCrashRule()
     private val target = InstrumentationRegistry.getInstrumentation().targetContext
-    private val probe = ProbeChannel(target, "nav").also { it.clear() }
+    // A hosted fixture writes under its own per-package storage (docs/TESTING.md, "Per-package storage").
+    private val probe = ProbeChannel(target, "nav", loadedPackage = "com.mikimn.fixture.manifest").also { it.clear() }
 
     @Test fun singleTopActivityReceivesOnNewIntentInsteadOfASecondInstance() {
         // A plain startActivity, not ActivityScenario: DCLActivity doesn't report the lifecycle
