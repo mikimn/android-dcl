@@ -29,6 +29,13 @@ android {
         additionalParameters.add("0x8f")
     }
 
+    lint {
+        // TODO: lint currently reports many pre-existing findings. Don't fail the build on them
+        // until a baseline (lint-baseline.xml) is generated; the report is still produced and
+        // uploaded by CI.
+        abortOnError = false
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

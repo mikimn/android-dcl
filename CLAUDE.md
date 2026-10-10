@@ -81,9 +81,10 @@ activities, Firebase `datatransport` services, …) remain from before the ATM h
 
 ### Code & resource loading
 
-`LoadedApk.load()` writes the APK bytes to a temp file, extracts it into a per-APK cache dir
-(`utils/Zip`), discovers `split_config.*.apk` siblings when loaded from an install dir, builds an
-`InMemoryDexClassLoader` (parent: the host classloader's parent) whose native library path is the
+`LoadedApk.load()` writes the APK bytes to a read-only file in the host's cache dir (kept for the
+process's life, replaced atomically by rename; `LoadedApk.paths`), extracts it into a per-APK cache
+dir (`utils/Zip`), discovers `split_config.*.apk` siblings when loaded from an install dir, builds a
+file-backed `DexClassLoader` (so ART can dex2oat/verify it; parent: the host classloader's parent) whose native library path is the
 install dir's `lib/`, the extracted split `lib/` dirs, and the base APK's own extracted
 `lib/<abi>` for the host process's most-preferred ABI. 32-bit-only libs can't load in a 64-bit
 host; `LoadedApk` logs a warning when an APK ships libs but none match. It then registers
@@ -141,7 +142,13 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   per navigation hop breaks apps with path-keyed singletons (e.g. DataStore).
 - Don't hardcode the host package name: derive it from a `Context` or from the intent being
   rewritten (only the dead `MyContextWrapper` and `scripts/test-apk.sh` still hardcode it).
-- All loaded apps share the host's data directory, uid and granted permissions.
+- All loaded apps share the host's uid and granted permissions. Private storage is per package: the
+  shadow Application/Activity and loaded providers get a `DCLContext(virtualPackage = ...)` whose
+  storage APIs resolve to `<hostDataDir>/virtual/<package>/` (`VirtualDataDirs`; SharedPreferences by
+  name prefix). Don't pass the host's own context to loaded code, and keep `mBase` out of any
+  `FieldMapper.copy` between host and shadow objects. Apps hardcoding `/data/data/<pkg>` still miss. This isolates loaded apps from each other by
+  accident; it is not a security boundary (same uid, same process), but package names and file/dir
+  names are validated so paths can't be steered outside `virtual/<package>/`.
 
 ## Roadmap
 

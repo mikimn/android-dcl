@@ -62,7 +62,8 @@ object ShadowApplication {
         // val attachBaseContext = shadowApp.javaClass.tryGetMethod("attachBaseContext", Context::class.java)
         // attachBaseContext?.invoke(shadowApp, context)
 
-        FieldMapper.copy(shadowApp, baseApplication)
+        // mBase stays the context the app was just attached with (the loaded package's own).
+        FieldMapper.copy(shadowApp, baseApplication, Predicate { it.first.name != "mBase" })
 
         fixPackageInfoDependency(context, shadowApp)
         fixMainThreadDependency(context, shadowApp)

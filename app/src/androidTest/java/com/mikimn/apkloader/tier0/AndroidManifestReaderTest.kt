@@ -90,7 +90,7 @@ class AndroidManifestReaderTest {
 
     @Test fun parsesAllActivitiesButNotAliases() {
         val names = reader("fx-manifest.apk").parseActivities().map { it.first.name }
-        assertThat(names).containsExactly("$pkg.MainActivity", "$pkg.SecondActivity")
+        assertThat(names).containsExactly("$pkg.MainActivity", "$pkg.SecondActivity", "$pkg.ViewActivity")
     }
 
     @Test fun activityIntentFilterIsParsed() {

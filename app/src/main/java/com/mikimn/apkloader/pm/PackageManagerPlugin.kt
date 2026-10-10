@@ -23,4 +23,16 @@ interface PackageManagerPlugin {
     fun getPackageInfo(packageName: String, flags: Int): PackageInfo
 
     fun resolveActivity(intent: Intent, flags: Int): ResolveInfo?
+
+    // The query methods below return null when this plugin has no opinion (the aggregate then
+    // consults the next plugin / the real PackageManager). A non-null list, even an empty one,
+    // is this plugin's answer, and is merged with the real PackageManager's results.
+
+    fun queryIntentActivities(intent: Intent, flags: Int): List<ResolveInfo>? = null
+
+    fun queryIntentServices(intent: Intent, flags: Int): List<ResolveInfo>? = null
+
+    fun queryBroadcastReceivers(intent: Intent, flags: Int): List<ResolveInfo>? = null
+
+    fun getLaunchIntentForPackage(packageName: String): Intent? = null
 }
