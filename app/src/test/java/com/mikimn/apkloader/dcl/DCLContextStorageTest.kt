@@ -3,6 +3,7 @@ package com.mikimn.apkloader.dcl
 import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.mikimn.apkloader.apk.LoadedApk
 import com.google.common.truth.Truth.assertThat
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -112,5 +113,32 @@ class DCLContextStorageTest {
         assertThrows(IllegalArgumentException::class.java) { a.getExternalFilesDir("../../x") }
         assertThrows(IllegalArgumentException::class.java) { a.getDatabasePath("../x.db") }
         assertThrows(IllegalArgumentException::class.java) { forPackage("../evil").filesDir }
+    }
+
+    @Test fun codePathsAndApplicationInfoPointAtTheLoadedApkWhenGiven() {
+        val apk = java.io.File("/cache/loaded.apk")
+        val split = java.io.File("/install/split_config.en.apk")
+        val lib = java.io.File("/cache/lib/arm64-v8a")
+        val c = DCLContext(host, virtualPackage = "pkg.a", loadedPaths = LoadedApk.Paths(apk, listOf(split), lib))
+        assertThat(c.packageCodePath).isEqualTo(apk.path)
+        assertThat(c.packageResourcePath).isEqualTo(apk.path)
+        with(c.applicationInfo) {
+            assertThat(sourceDir).isEqualTo(apk.path)
+            assertThat(publicSourceDir).isEqualTo(apk.path)
+            assertThat(splitSourceDirs).asList().containsExactly(split.path)
+            assertThat(nativeLibraryDir).isEqualTo(lib.path)
+            assertThat(dataDir).isEqualTo(c.dataDir.path) // storage and code paths patched together
+        }
+        // The host's own context, and one without paths, keep the host's ApplicationInfo paths.
+        // (getPackageCodePath() itself is null under Robolectric with manifest = NONE, so it is
+        // covered on-device by HostedActivityPathsTest.)
+        assertThat(plain.applicationInfo.sourceDir).isEqualTo(host.applicationInfo.sourceDir)
+        assertThat(a.applicationInfo.sourceDir).isEqualTo(host.applicationInfo.sourceDir)
+    }
+
+    @Test fun noSplitsMeansNullSplitSourceDirsLikeAnUnsplitInstall() {
+        val c = DCLContext(host, virtualPackage = "pkg.a", loadedPaths = LoadedApk.Paths(java.io.File("/c/x.apk"), emptyList(), null))
+        assertThat(c.applicationInfo.splitSourceDirs).isNull()
+        assertThat(c.applicationInfo.nativeLibraryDir).isEqualTo(host.applicationInfo.nativeLibraryDir) // none given: unchanged
     }
 }

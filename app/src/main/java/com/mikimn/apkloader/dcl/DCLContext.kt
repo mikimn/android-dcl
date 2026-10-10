@@ -13,6 +13,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.content.res.Resources
 import android.util.Log
 import com.mikimn.apkloader.MyContextWrapper
+import com.mikimn.apkloader.apk.LoadedApk
 import com.mikimn.apkloader.plugins.DefaultPluginProvider
 import com.mikimn.apkloader.plugins.ContextPluginProvider
 import com.mikimn.apkloader.pm.PackageManagerAggregate
@@ -24,11 +25,16 @@ import java.io.FileOutputStream
  * @param virtualPackage when set, this context belongs to that loaded package (the shadow
  * Application/Activity and the loaded app's providers get one), and every private-storage API is
  * redirected to its own [VirtualDataDirs]. The host's own contexts leave it null and are untouched.
+ * @param loadedPaths where that package's APK, splits and native libs are on disk. Reported by
+ * `getApplicationInfo()` and `getPackageCodePath()`/`getPackageResourcePath()` instead of the host's
+ * own APK, because libraries reopen their own APK by path (crash reporters, asset-bundle loaders,
+ * split-install helpers, ...).
  */
 class DCLContext(
     base: Context,
     private val pluginProvider: ContextPluginProvider = DefaultPluginProvider(),
-    private val virtualPackage: String? = null
+    private val virtualPackage: String? = null,
+    private val loadedPaths: LoadedApk.Paths? = null
 ) : ContextWrapper(base) {
     companion object {
         private var shadowPackageName: String? = null
@@ -189,9 +195,22 @@ class DCLContext(
 
     // Apps read ApplicationInfo.dataDir directly (e.g. to build their own paths).
     private val patchedApplicationInfo: ApplicationInfo by lazy {
-        ApplicationInfo(super.getApplicationInfo()).also { info -> dirs?.let { info.dataDir = it.dataDir.path } }
+        ApplicationInfo(super.getApplicationInfo()).also { info ->
+            dirs?.let { info.dataDir = it.dataDir.path }
+            loadedPaths?.let { paths ->
+                info.sourceDir = paths.apk.path
+                info.publicSourceDir = paths.apk.path
+                info.splitSourceDirs = paths.splits.map { it.path }.toTypedArray().takeIf { it.isNotEmpty() }
+                info.splitPublicSourceDirs = info.splitSourceDirs
+                paths.nativeLibraryDir?.let { info.nativeLibraryDir = it.path }
+            }
+        }
     }
 
     override fun getApplicationInfo(): ApplicationInfo =
         if (dirs != null) patchedApplicationInfo else super.getApplicationInfo()
+
+    override fun getPackageCodePath(): String = loadedPaths?.apk?.path ?: super.getPackageCodePath()
+
+    override fun getPackageResourcePath(): String = loadedPaths?.apk?.path ?: super.getPackageResourcePath()
 }

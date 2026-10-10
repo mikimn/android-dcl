@@ -24,6 +24,12 @@ public class HelloActivity extends Activity {
         Probe.value(this, CHANNEL, "intent.package", launch.getComponent() == null ? null : launch.getComponent().getPackageName());
         Probe.value(this, CHANNEL, "intent.hostExtras",
             launch.hasExtra("activityClassName") || launch.hasExtra("apkAssetFileName") || launch.hasExtra("loadedApkName"));
+        // Where this app thinks its code lives (libraries reopen their own APK by these paths).
+        Probe.value(this, CHANNEL, "path.code", getPackageCodePath());
+        Probe.value(this, CHANNEL, "path.resource", getPackageResourcePath());
+        Probe.value(this, CHANNEL, "path.sourceDir", getApplicationInfo().sourceDir);
+        Probe.value(this, CHANNEL, "path.publicSourceDir", getApplicationInfo().publicSourceDir);
+        Probe.value(this, CHANNEL, "path.dataDir", getApplicationInfo().dataDir);
         TextView text = new TextView(this);
         text.setText("hello from fx-hello");
         setContentView(text);
