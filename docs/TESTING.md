@@ -20,6 +20,22 @@ layer over real third-party APKs.
   -Pandroid.testInstrumentationRunnerArguments.class=com.mikimn.apkloader.HostAppSmokeTest
 ```
 
+### Running on a specific device
+
+`connectedDebugAndroidTest` runs on **every** attached device, including a phone you didn't mean to
+test on. Pin one with `ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest` and check the
+`Starting N tests on <model>` lines in the output. Use a plain serial (`b61ad4f5`,
+`192.168.0.111:5555`); a wireless-debugging mDNS name (`adb-...._adb-tls-connect._tcp`) did not
+match and the run went to another device. A device that is attached twice (USB + Wi-Fi, or Wi-Fi +
+wireless debugging) gets two competing runs: disconnect the duplicate.
+
+The suite is expected to pass on both an old and a new Android: it has been run on API 30 (OnePlus
+6T) and API 36 (CPH2581). On API 36 that means the fixture suite: loader, provider registration,
+hidden-API exemptions (HiddenApiBypass 6.x changes how they are applied), per-package storage and
+navigation. **Real third-party apps (e.g. OnePlus Notes) have not been run there.** API 34/35 were not
+run. Tests must not assume device state (e.g. dark mode, see
+`loadedResourcesResolveByNameWithTheAppsOwnPackageId`).
+
 ## JVM unit tests (layer A)
 
 `./gradlew testDebugUnitTest` (no device). Plain JUnit + Truth for pure logic (`Zip`, `FieldMapper`,
@@ -96,9 +112,21 @@ test's loaded APK can never leak into the next. Consequences:
   reads only this process's own log (by pid and start time) and does not use `UiAutomation`, which
   races between orchestrator-spawned processes ("UiAutomationService already registered").
 - Always build a `ProbeChannel` from the **target** (host app) context: the protocol depends on the
-  host's `filesDir`, which is where loaded fixtures write.
+  host's data dir. A fixture launched through `DCLActivity` writes under its own per-package storage
+  (see below), so pass `loadedPackage` to read it; code using the host's own context (providers
+  attached by a test, `FixtureLoader`) still writes to the host's `filesDir`.
 
 `TestInfrastructureTest` tests these helpers themselves.
+
+## Per-package storage
+
+Every loaded APK shares the host's uid and data dir, so the loader gives the shadow Application,
+shadow Activity and the loaded app's providers a `DCLContext` bound to the loaded package
+(`virtualPackage`). Its private-storage APIs (`getFilesDir`, `getCacheDir`, `getDir`, `openFile*`,
+databases, `getExternalFilesDir`, ...) resolve to `<hostDataDir>/virtual/<package>/...`
+(`VirtualDataDirs`); SharedPreferences are isolated by a name prefix instead of a path. The host's
+own contexts are untouched. JVM tests: `VirtualDataDirsTest`, `DCLContextStorageTest`; on-device:
+`DCLContextStorageOnDeviceTest`.
 
 ## Two copies of host classes (gotcha)
 

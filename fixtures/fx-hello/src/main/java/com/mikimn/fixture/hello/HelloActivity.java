@@ -15,6 +15,15 @@ public class HelloActivity extends Activity {
         Probe.value(this, CHANNEL, "packageName", getPackageName());
         Probe.value(this, CHANNEL, "applicationClass", getApplication().getClass().getName());
         Probe.value(this, CHANNEL, "classLoader", getClass().getClassLoader().getClass().getName());
+        // What the launcher passed us (getIntent() of a hosted activity: see DCLActivity.HOST_ONLY_EXTRAS).
+        android.content.Intent launch = getIntent();
+        Probe.value(this, CHANNEL, "intent.action", launch.getAction());
+        Probe.value(this, CHANNEL, "intent.data", launch.getDataString());
+        Probe.value(this, CHANNEL, "intent.extra", launch.getStringExtra("fx.extra"));
+        Probe.value(this, CHANNEL, "intent.component", launch.getComponent() == null ? null : launch.getComponent().getClassName());
+        Probe.value(this, CHANNEL, "intent.package", launch.getComponent() == null ? null : launch.getComponent().getPackageName());
+        Probe.value(this, CHANNEL, "intent.hostExtras",
+            launch.hasExtra("activityClassName") || launch.hasExtra("apkAssetFileName") || launch.hasExtra("loadedApkName"));
         TextView text = new TextView(this);
         text.setText("hello from fx-hello");
         setContentView(text);

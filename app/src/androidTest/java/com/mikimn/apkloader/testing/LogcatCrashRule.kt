@@ -29,6 +29,7 @@ class LogcatCrashRule : TestWatcher() {
     }
 
     override fun succeeded(description: Description) {
+        awaitLogDelivery()
         // logcat -T takes "MM-DD HH:MM:SS.mmm" in the device's local time
         val since = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US).format(Date(startedAtMs))
         val log = logcat("-d", "-T", since, "--pid=${Process.myPid()}", "-s", "AndroidRuntime:E")
@@ -36,6 +37,37 @@ class LogcatCrashRule : TestWatcher() {
         if (idx >= 0) {
             throw AssertionError("Process logged a FATAL EXCEPTION during the test:\n" + log.substring(idx).take(2000))
         }
+    }
+
+    /**
+     * `android.util.Log` hands lines to `logd` asynchronously, so a `logcat -d` issued right after
+     * the test body can run before the test's own last lines (the ones this rule exists to find)
+     * have arrived: seen as a flaky "expected AssertionError ... nothing was thrown" on a slow
+     * device. Log a unique marker and wait until it is readable: `logd` stores a process's lines in
+     * the order it received them, so once the marker is there everything logged before it is too.
+     * Bounded, and best effort: if the marker never shows up the scan below still runs.
+     *
+     * Cost: each poll spawns a `logcat` process. It normally succeeds on the first poll; when the
+     * marker is slow the interval backs off (50 ms up to 400 ms) so a lagging device is not made
+     * slower by the rule's own polling.
+     */
+    private fun awaitLogDelivery() {
+        val marker = "end-of-test-${System.nanoTime()}"
+        android.util.Log.i(MARKER_TAG, marker)
+        val deadline = System.currentTimeMillis() + DELIVERY_TIMEOUT_MS
+        var interval = POLL_INTERVAL_MS
+        while (System.currentTimeMillis() < deadline) {
+            if (logcat("-d", "--pid=${Process.myPid()}", "-s", "$MARKER_TAG:I").contains(marker)) return
+            Thread.sleep(interval)
+            interval = minOf(interval * 2, MAX_POLL_INTERVAL_MS)
+        }
+    }
+
+    private companion object {
+        const val MARKER_TAG = "LogcatCrashRule"
+        const val DELIVERY_TIMEOUT_MS = 5_000L
+        const val POLL_INTERVAL_MS = 50L
+        const val MAX_POLL_INTERVAL_MS = 400L
     }
 
     private fun logcat(vararg args: String): String {

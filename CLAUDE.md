@@ -38,6 +38,8 @@ Real-APK test results, and the root-cause write-ups behind most fixes, are recor
 
 1. `AndroidManifest.xml` declares `android:appComponentFactory=".dcl.DCLAppComponentFactory"`,
    so the framework routes *every* component instantiation for this process through it.
+   `instantiateActivity` also preloads the APK named by the intent (`ApkLoading.preload`) so a hosted
+   activity restored into a fresh process can unmarshal its saved state before `onCreate` runs.
 2. [`DCLAppComponentFactory`](app/src/main/java/com/mikimn/apkloader/dcl/DCLAppComponentFactory.kt)
    (`CoreComponentFactory` subclass) installs a `FileTrackingClassLoader` at
    `instantiateClassLoader`, and in `instantiateActivity` redirects any activity class name it
@@ -48,8 +50,9 @@ Real-APK test results, and the root-cause write-ups behind most fixes, are recor
    `java.lang.reflect.Proxy`. Every outgoing `startActivity*` intent whose component belongs to a
    loaded APK (`FileTrackingClassLoader.ownerOf`) is rewritten to the next
    [`DCLActivityProxyPool`](app/src/main/java/com/mikimn/apkloader/dcl/DCLActivityProxyPool.kt)
-   slot (8 manifest-declared `standard` activities, round-robin), with the real class/APK name
-   stashed as extras. **This is how a loaded app's own in-app navigation works** — target
+   slot (manifest-declared placeholder activities chosen by the target's own `launchMode` and whether it
+   declares `configChanges`; same class -> same slot, so singleTop/clear-top work), with the real
+   class/APK name stashed as extras. **This is how a loaded app's own in-app navigation works** — target
    activities don't need host manifest entries.
 4. [`DCLActivity`](app/src/main/java/com/mikimn/apkloader/dcl/DCLActivity.kt) is the real host.
    `onCreate` either reads the target APK (`KEY_APK_ASSET_FILE_NAME`: an asset name or an
@@ -80,9 +83,10 @@ activities, Firebase `datatransport` services, …) remain from before the ATM h
 
 ### Code & resource loading
 
-`LoadedApk.load()` writes the APK bytes to a temp file, extracts it into a per-APK cache dir
-(`utils/Zip`), discovers `split_config.*.apk` siblings when loaded from an install dir, builds an
-`InMemoryDexClassLoader` (parent: the host classloader's parent) whose native library path is the
+`LoadedApk.load()` writes the APK bytes to a read-only file in the host's cache dir (kept for the
+process's life, replaced atomically by rename; `LoadedApk.paths`), extracts it into a per-APK cache
+dir (`utils/Zip`), discovers `split_config.*.apk` siblings when loaded from an install dir, builds a
+file-backed `DexClassLoader` (so ART can dex2oat/verify it; parent: the host classloader's parent) whose native library path is the
 install dir's `lib/`, the extracted split `lib/` dirs, and the base APK's own extracted
 `lib/<abi>` for the host process's most-preferred ABI. 32-bit-only libs can't load in a 64-bit
 host; `LoadedApk` logs a warning when an APK ships libs but none match. It then registers
@@ -112,7 +116,8 @@ and delegates `loadClass` across every APK it has loaded, falling back to the ho
 ### `reflection/` and `shadow/`
 
 `reflection.FieldMapper` / `ReflectionUtils` are the low-level reflective field/method access
-helpers everything above is built on (`HiddenApiBypass` from lsposed for hidden methods).
+helpers everything above is built on (`HiddenApiBypass` from lsposed for hidden methods). Keep `HiddenApiBypass` current:
+4.3 reads ART's class layout through `Unsafe` and segfaults on Android 16 (fixed by 6.1).
 `shadow.ShadowActivity` / `ShadowApplication` use them to reach hidden AOSP fields
 (`mMainThread`, `mInstrumentation`, `mPackageInfo`, `mInitialApplication`) and hidden methods
 (`Activity.attach`, invoked positionally) — inherently fragile across OS versions, which is also
@@ -138,9 +143,19 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   "active" at a time. Don't assume concurrent loads work.
 - One shadow `Application` per `LoadedApk` (`LoadedApk.shadowApplication`): creating a second one
   per navigation hop breaks apps with path-keyed singletons (e.g. DataStore).
+- A hosted activity's `getIntent()` is a copy of the host activity's real intent pointed at the shadow
+  class (`ShadowActivity.shadowIntent`; the loader's own routing extras are stripped). It is set once at
+  attach: like the platform, `onNewIntent` does not call `setIntent`, so apps that want the new intent
+  as `getIntent()` call it themselves.
 - Don't hardcode the host package name: derive it from a `Context` or from the intent being
   rewritten (only the dead `MyContextWrapper` and `scripts/test-apk.sh` still hardcode it).
-- All loaded apps share the host's data directory, uid and granted permissions.
+- All loaded apps share the host's uid and granted permissions. Private storage is per package: the
+  shadow Application/Activity and loaded providers get a `DCLContext(virtualPackage = ...)` whose
+  storage APIs resolve to `<hostDataDir>/virtual/<package>/` (`VirtualDataDirs`; SharedPreferences by
+  name prefix). Don't pass the host's own context to loaded code, and keep `mBase` out of any
+  `FieldMapper.copy` between host and shadow objects. Apps hardcoding `/data/data/<pkg>` still miss. This isolates loaded apps from each other by
+  accident; it is not a security boundary (same uid, same process), but package names and file/dir
+  names are validated so paths can't be steered outside `virtual/<package>/`.
 
 ## Roadmap
 

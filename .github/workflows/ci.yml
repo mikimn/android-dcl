@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Only supersede PR runs; every push to master should produce its own build/email.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: Lint & unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Lint
+        run: ./gradlew lintDebug
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/lint-results-debug.*
+            app/build/reports/tests/
+            app/build/test-results/
+          if-no-files-found: ignore
+
+  build-apk:
+    name: Build test APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: lint-and-test
+    # APK + email only on master (a push, or a manual run dispatched on master), never for PRs
+    # or other branches: this job holds the SMTP secrets.
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    env:
+      SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: apkloader-debug-${{ github.run_number }}-${{ github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Email install link
+        # Skip (rather than fail) when SMTP isn't configured. Plain smtplib instead of a
+        # third-party action, so the SMTP password is never handed to external code.
+        if: env.SMTP_SERVER != ''
+        env:
+          SMTP_PORT: ${{ secrets.SMTP_PORT || '465' }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          MAIL_TO: ${{ secrets.CI_EMAIL_TO }}
+          MAIL_FROM: ${{ secrets.CI_EMAIL_FROM || 'onboarding@resend.dev' }}
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import os, smtplib, ssl
+          from email.message import EmailMessage
+          from html import escape
+
+          e = os.environ
+          msg = EmailMessage()
+          msg["Subject"] = f"ApkLoader test build #{e['RUN_NUMBER']} ({e['REF_NAME']})"
+          msg["From"] = f"ApkLoader CI <{e['MAIL_FROM']}>"
+          msg["To"] = e["MAIL_TO"]
+          msg.set_content(
+              f"New ApkLoader test build.\nDownload (zip): {e['ARTIFACT_URL']}\nRun: {e['RUN_URL']}\n"
+          )
+          msg.add_alternative(f"""\
+          <p>A new test build of <b>ApkLoader</b> is ready.</p>
+          <ul>
+            <li>Ref: <code>{escape(e['REF_NAME'])}</code> @ <code>{escape(e['COMMIT_SHA'])}</code></li>
+            <li>Event: {escape(e['EVENT_NAME'])}</li>
+          </ul>
+          <p><a href="{escape(e['ARTIFACT_URL'])}">Download the APK (zip)</a>
+          &middot; <a href="{escape(e['RUN_URL'])}">Run page</a></p>
+          <p>Open the link on your phone while signed in to GitHub, unzip, and install the
+          <code>.apk</code> (allow "install unknown apps" for your browser/Files app).
+          It is a debug-signed build, so it will not update a release-signed install.</p>
+          """, subtype="html")
+
+          host, port = e["SMTP_SERVER"], int(e["SMTP_PORT"])
+          ctx = ssl.create_default_context()
+          if port == 465:
+              server = smtplib.SMTP_SSL(host, port, context=ctx, timeout=30)
+          else:
+              server = smtplib.SMTP(host, port, timeout=30)
+              server.starttls(context=ctx)
+          with server:
+              server.login(e["SMTP_USERNAME"], e["SMTP_PASSWORD"])
+              server.send_message(msg)
+          PY

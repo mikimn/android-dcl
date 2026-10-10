@@ -40,4 +40,15 @@ class FixtureLoader {
     fun loadedApk(name: String): LoadedApk = LoadedApk(name, baseClassLoader.parent)
 
     fun id(pkg: String, type: String, name: String): Int = resources.getIdentifier(name, type, pkg)
+
+    /**
+     * What `fx-resources`'s `title` string resolves to on *this device right now*: the fixture
+     * ships a `values-night` variant, so the answer follows the device's dark-mode setting. Tests
+     * must not assume light mode (they would fail on a phone that happens to be in dark mode).
+     */
+    fun expectedFxResourcesTitle(resources: Resources = this.resources): String {
+        val night = resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        return if (night) "fx-resources title (night)" else "fx-resources title"
+    }
 }
