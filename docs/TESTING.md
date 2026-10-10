@@ -59,8 +59,8 @@ They keep the default resource package id `0x7f`, which must coexist with the ho
 Fixtures report what they saw through `fixtures/common`'s `Probe` (file under the shared
 `filesDir`; the test reads it with `ProbeChannel`). To add a fixture: create `fixtures/<name>`
 (copy an existing `build.gradle.kts`, use a unique `com.mikimn.fixture.*` namespace), then add it
-to `settings.gradle.kts` and `fixtureNames` in `app/build.gradle.kts`, and a row to
-`FixtureApksTest`. Note `Probe` is compiled into every fixture; only one loaded APK is active at
+to `settings.gradle.kts` (the app module picks fixtures up from the `:fixtures:*` subprojects
+automatically), and add a row to `FixtureApksTest`. Note `Probe` is compiled into every fixture; only one loaded APK is active at
 a time, so the duplicate class names don't clash.
 
 `FixtureApksTest` validates fixtures with the framework parser, independent of the loader, so a
@@ -79,12 +79,18 @@ test's loaded APK can never leak into the next. Consequences:
 
 ## Test utilities (`app/src/androidTest/.../testing/`)
 
-- `waitFor` / `waitForNotNull` - poll a condition with a timeout. No `Thread.sleep` in tests.
+- `waitFor` / `waitForNotNull` - poll a condition with a timeout. Don't `Thread.sleep` to wait for the
+  code under test (it is slow when things work and flaky when they don't); a sleep is fine to simulate
+  a slow *producer* inside a test.
 - `ProbeChannel` - how a test observes what a loaded fixture did. Fixtures share the host's
   data dir, so they append lines to `<filesDir>/probe/<channel>.log`; the test reads/awaits them.
 - `FixtureApks` - copies a fixture APK from the androidTest assets (`fixtures/*.apk`) into the
   host's files dir and returns its absolute path, which `DCLActivity.intentForAPK` accepts.
 - `LogcatCrashRule` - fails a test if the process logged a `FATAL EXCEPTION` that didn't kill it.
+  It runs `logcat -c`, which clears the **device-wide** log buffer (not just this process's), so don't
+  run the suite on a device where someone is collecting logs.
+- Always build a `ProbeChannel` from the **target** (host app) context: the protocol depends on the
+  host's `filesDir`, which is where loaded fixtures write.
 
 `TestInfrastructureTest` tests these helpers themselves.
 

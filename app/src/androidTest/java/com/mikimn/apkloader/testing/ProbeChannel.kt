@@ -15,7 +15,9 @@ import java.io.File
  * `File(context.filesDir, "probe/<channel>.log")`. Because `filesDir` is shared, this works no
  * matter which package name the loaded code sees.
  *
- * **Test side**: this class. Use [clear] in `@Before`; each test runs in a fresh process under
+ * **Test side**: this class. Always construct it with the *target* (host app) context, e.g.
+ * `InstrumentationRegistry.getInstrumentation().targetContext`: the test APK's own context has a
+ * different `filesDir`, so a probe built from it would never see the fixture's events. Use [clear] in `@Before`; each test runs in a fresh process under
  * the orchestrator, so this is only needed when a test reuses a channel across phases.
  */
 class ProbeChannel(context: Context, val name: String) {

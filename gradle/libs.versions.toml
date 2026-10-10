@@ -13,7 +13,6 @@ axml = "v1.0.1"
 lspass = "+"
 testRunner = "1.5.2"
 testRules = "1.5.0"
-testServices = "1.4.2"
 orchestrator = "1.4.2"
 truth = "1.4.2"
 robolectric = "4.12.2"
@@ -46,7 +45,6 @@ coroutinesAndroid = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutine
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "testRules" }
 androidx-test-orchestrator = { group = "androidx.test", name = "orchestrator", version.ref = "orchestrator" }
-androidx-test-services = { group = "androidx.test.services", name = "test-services", version.ref = "testServices" }
 androidx-test-ext-truth = { group = "androidx.test.ext", name = "truth", version.ref = "androidxTruth" }
 androidx-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "uiautomator" }
 androidx-espresso-intents = { group = "androidx.test.espresso", name = "espresso-intents", version.ref = "espressoIntents" }
