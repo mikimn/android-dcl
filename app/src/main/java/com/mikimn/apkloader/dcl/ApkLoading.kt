@@ -38,13 +38,16 @@ object ApkLoading {
 
         val loadedApk = loader.addApkFile(apkName, apkData, context.resources)
 
-        (context.packageManager as? PackageManagerAggregate)
+        // Resolved once, here: the plugin lives in the process-wide aggregate, so a lambda that captured
+        // `context` (a DCLActivity on the DCLActivity.loadApk path) would keep a destroyed Activity alive.
+        val packageManager = context.applicationContext.packageManager
+        (packageManager as? PackageManagerAggregate)
             ?.addPlugin(
                 ManifestAwarePlugin(loadedApk.manifestReader!!) {
                     // Only the platform can verify an APK's signing data, from the persisted copy.
                     loadedApk.paths?.let { paths ->
                         @Suppress("DEPRECATION")
-                        context.packageManager.getPackageArchiveInfo(
+                        packageManager.getPackageArchiveInfo(
                             paths.apk.path, PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
                         )
                     }

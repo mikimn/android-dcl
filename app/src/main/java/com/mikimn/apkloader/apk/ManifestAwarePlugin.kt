@@ -101,12 +101,24 @@ class ManifestAwarePlugin(
         }
     }
 
+    override fun ownsPackage(packageName: String): Boolean = aInfo.packageName == packageName
+
+    override fun signingCertificates(packageName: String): List<ByteArray>? {
+        if (aInfo.packageName != packageName) return null
+        val info = archive ?: return null
+        @Suppress("DEPRECATION")
+        val signers = info.signingInfo?.apkContentsSigners ?: info.signatures
+        return signers?.map { it.toByteArray() }?.takeIf { it.isNotEmpty() }
+    }
+
     /**
      * An honest "no installer": a loaded package was not installed by anyone, so initiating,
      * originating and installing packages are all null. It must never claim a store (e.g.
      * `com.android.vending`), which would be lying to installer-verification checks (#31). Returns
      * null (falls through to the real PackageManager, which throws NameNotFoundException) if the
-     * hidden constructor is not available on this Android version.
+     * hidden constructor is not available on this Android version. The constructor trick (widest
+     * declared constructor, null/0/false arguments) was verified on API 30 only; the arity is known to
+     * differ on later releases, which is why failure is a fall-through and not an error.
      */
     override fun getInstallSourceInfo(packageName: String): InstallSourceInfo? =
         if (aInfo.packageName == packageName) noInstallSource else null

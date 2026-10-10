@@ -43,5 +43,11 @@ class HostedActivityIdentityTest {
 
         // "not installed by anyone", not a NameNotFoundException and never a store
         assertThat(probe.valueOf("installer")).isEqualTo("null")
+        assertThat(probe.valueOf("installer.legacy")).isEqualTo("null")
+
+        // the other identity checks an app makes about itself agree with that
+        assertThat(probe.valueOf("uid.isOurs")).isEqualTo("true")
+        assertThat(probe.valueOf("sig.checkSelf")).isEqualTo("true")
+        assertThat(probe.valueOf("sig.hasOwnCert")).isEqualTo("true")
     }
 }

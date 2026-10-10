@@ -238,6 +238,19 @@ class ManifestAwarePluginTest {
         }
     }
 
+    // The same "unknown, not an error" through the aggregate that apps actually call.
+    @Suppress("DEPRECATION")
+    @Test fun aFailingArchiveReadLeavesSigningFieldsUnsetThroughTheAggregateToo() {
+        val failing = ManifestAwarePlugin(loaded.manifestReader!!) { error("archive unreadable") }
+        val agg = com.mikimn.apkloader.pm.PackageManagerAggregate(systemPm, arrayOf(failing))
+        val info = agg.getPackageInfo(pkg, signingFlags)
+        assertThat(info.packageName).isEqualTo(pkg)
+        assertThat(info.signingInfo).isNull()
+        assertThat(info.signatures).isNull()
+        // and an unknown certificate set is "unsigned", never a crash
+        assertThat(agg.checkSignatures(pkg, pkg)).isEqualTo(PackageManager.SIGNATURE_NEITHER_SIGNED)
+    }
+
     @Test fun installSourceIsAnHonestNoInstallerForTheLoadedPackageOnly() {
         val source = plugin.getInstallSourceInfo(pkg)
         assertThat(source).isNotNull()
