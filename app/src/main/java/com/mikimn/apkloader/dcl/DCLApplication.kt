@@ -29,6 +29,7 @@ class DCLApplication : Application() {
 
         (classLoader as? FileTrackingClassLoader)?.let {
             ActivityTaskManagerHook.install(it, packageName)
+            ActivityManagerHook.install(it, packageName)
         }
     }
 

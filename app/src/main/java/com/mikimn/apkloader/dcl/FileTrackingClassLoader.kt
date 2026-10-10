@@ -35,6 +35,10 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
 
     fun apkFile(name: String): LoadedApk? = loadedAPKFiles.getOrDefault(name, null)
 
+    /** Whether [packageName] is the (manifest) package of an APK loaded in this process. */
+    fun isLoadedPackage(packageName: String): Boolean =
+        loadedAPKFiles.values.any { it.manifestReader?.getApplicationInfo()?.packageName == packageName }
+
     /** Which loaded APK (if any) a class name belongs to, e.g. for retargeting an intent. */
     fun ownerOf(className: String): LoadedApk? {
         for (loadedApk in loadedAPKFiles.values) {

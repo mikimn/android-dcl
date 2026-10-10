@@ -13,6 +13,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.content.res.Resources
 import android.util.Log
 import com.mikimn.apkloader.MyContextWrapper
+import com.mikimn.apkloader.apk.LoadedApk
 import com.mikimn.apkloader.plugins.DefaultPluginProvider
 import com.mikimn.apkloader.plugins.ContextPluginProvider
 import com.mikimn.apkloader.pm.PackageManagerAggregate
@@ -38,6 +39,19 @@ class DCLContext(
         // process-wide singleton, so a resolver that captured a DCLContext (which wraps an
         // Activity/Application base) would keep every context it was last handed alive.
         @Volatile private var trackingLoader: FileTrackingClassLoader? = null
+
+        /**
+         * A context for code of [apk] running outside a hosted activity (e.g. a receiver): the host's
+         * base services, with that package's own storage. [context] may be the host's
+         * Application or any wrapper of it.
+         */
+        @Suppress("UNUSED_PARAMETER") // [apk] is where its code paths come from once the context reports them
+        fun forLoadedApk(context: Context, apk: LoadedApk, packageName: String): Context {
+            var base = context
+            while (base is ContextWrapper && base !is DCLContext) base = base.baseContext
+            if (base is DCLContext) base = base.baseContext
+            return DCLContext(base, virtualPackage = packageName)
+        }
 
         /** The loaded package's name if (and only if) the real caller is that APK's own code. */
         fun loadedPackageForCaller(): String? {

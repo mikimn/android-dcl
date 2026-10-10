@@ -9,5 +9,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Receives an explicit broadcast (by class) and implicit ones (by action) from HelloActivity. -->
+        <receiver android:name=".HelloReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="fx.hello.PING" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

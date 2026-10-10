@@ -175,6 +175,8 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
                     info.exported = attr.nodeValue.toBoolean()
                 } else if (attr.localName == "enabled") {
                     info.enabled = attr.nodeValue != "false"
+                } else if (attr.localName == "permission") {
+                    info.permission = attr.nodeValue // required of whoever sends it a broadcast
                 }
             }
             info.metaData = parseMetaData(node)
