@@ -82,7 +82,11 @@ class ApkLoadingTest {
         activityLikeResources.addLoaders(loader.resourcesLoader) // what DCLActivity.initResourceLoader does
         val id = activityLikeResources.getIdentifier("title", "string", pkg)
         assertThat(id).isNotEqualTo(0)
-        assertThat(activityLikeResources.getString(id)).isEqualTo("fx-resources title")
+        // The fixture ships a values-night variant, so the expected string follows the device's dark mode.
+        val night = activityLikeResources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        assertThat(activityLikeResources.getString(id))
+            .isEqualTo(if (night) "fx-resources title (night)" else "fx-resources title")
     }
 
     @Test fun aHostileArchiveIsRejectedOnceAndNotExtractedAgain() {
