@@ -2,11 +2,13 @@ package com.mikimn.apkloader.dcl
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.Application
 import android.app.Instrumentation
 import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
@@ -59,8 +61,11 @@ class DCLActivity : ComponentActivity() {
          * guard is bypassed and it tries to re-add the already-attached decor view, crashing
          * with "View ... has already been added to the window manager".
          */
+        // mBase (ContextWrapper): the shadow Activity's base is the loaded package's own
+        // DCLContext (per-package storage); copying it onto the host would hand the host's
+        // activity that context too.
         private val LIFECYCLE_COPY_FILTER = Predicate<Pair<java.lang.reflect.Field, Any?>> {
-            it.first.name != "mWindowAdded"
+            it.first.name != "mWindowAdded" && it.first.name != "mBase"
         }
         const val KEY_ACTIVITY_CLASS = "activityClassName"
         const val KEY_APK_ASSET_FILE_NAME = "apkAssetFileName"
@@ -146,6 +151,12 @@ class DCLActivity : ComponentActivity() {
         val manifestReader = loadedApk.manifestReader
         val appInfo = manifestReader?.getApplicationInfo()
 
+        // The loaded app's own Context: same host services, but private storage under
+        // virtual/<package>/ instead of the host's (shared by every loaded app otherwise).
+        val shadowContext: Context = appInfo?.packageName?.let { pkg ->
+            DCLContext((baseContext as? ContextWrapper)?.baseContext ?: baseContext, virtualPackage = pkg)
+        } ?: baseContext
+
         val activityClassName = intent.getStringExtra(KEY_ACTIVITY_CLASS)
             ?: manifestReader?.getLauncherActivity()?.name
 
@@ -165,6 +176,7 @@ class DCLActivity : ComponentActivity() {
             FieldMapper.copy(wrapped, it)
             wrapped
         }
+        aInfo?.let { applyActivityAttributes(it) }
 
         // Initialize providers
         val providers = manifestReader?.getProviders() ?: emptyList()
@@ -176,7 +188,7 @@ class DCLActivity : ComponentActivity() {
 
                 // TODO(@mikimn): Remove, replace with general provider resolver
                 if (!providerInfo.name.contains("MlKitInitProvider")) {
-                    provider.attachInfo(baseContext, providerInfo)
+                    provider.attachInfo(shadowContext, providerInfo)
                     // Should not be called, because attachInfo already does that
                     //  https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/content/ContentProvider.java;l=2649;drc=61197364367c9e404c7da6900658f1b16c42d0da
                     // provider.onCreate()
@@ -201,7 +213,7 @@ class DCLActivity : ComponentActivity() {
         val isNewShadowApp = loadedApk.shadowApplication == null
         val shadowApp = applicationClassName?.let {
             loadedApk.shadowApplication
-                ?: ShadowApplication.createShadowApplication(loader, it, application, baseContext)
+                ?: ShadowApplication.createShadowApplication(loader, it, application, shadowContext)
                     .also { created -> loadedApk.shadowApplication = created }
         }
 
@@ -248,7 +260,7 @@ class DCLActivity : ComponentActivity() {
                 // The saved state may hold the loaded app's own Parcelables (view/fragment state),
                 // which a Bundle can only unparcel with the APK's classloader, not the host's.
                 loadedApk.loader?.let { savedInstanceState?.classLoader = it }
-                initShadowActivity(shadowActivity!!, shadowApp, newActivityInfo, savedInstanceState)
+                initShadowActivity(shadowActivity!!, shadowApp, shadowContext, newActivityInfo, savedInstanceState)
 
                 isWaitingOnHandler = false;
             }
@@ -267,10 +279,11 @@ class DCLActivity : ComponentActivity() {
     private fun initShadowActivity(
         activity: Activity,
         shadowApp: Application?,
+        shadowContext: Context,
         newActivityInfo: ActivityInfo,
         savedInstanceState: Bundle?
     ) {
-        ShadowActivity.attachActivity(newActivityInfo, this, activity, shadowApp)
+        ShadowActivity.attachActivity(newActivityInfo, this, activity, shadowApp, shadowContext)
 
         if (newActivityInfo.themeResource != 0) {
             activity.setTheme(newActivityInfo.themeResource)
@@ -465,8 +478,50 @@ class DCLActivity : ComponentActivity() {
         overrideLifecycleCall("onNewIntent", Intent::class.java to intent)
     }
 
+    // What the loaded activity declared for itself, which the host's own (placeholder) manifest
+    // entry cannot express per activity - see DCLActivityProxyPool for the part that can.
+    private var hostedConfigChanges = 0
+    private var lastConfiguration: Configuration? = null
+
+    private fun applyActivityAttributes(info: ActivityInfo) {
+        hostedConfigChanges = DCLActivityProxyPool.appHandledConfigChanges(
+            info.configChanges, info.applicationInfo?.targetSdkVersion ?: 0
+        )
+        lastConfiguration = Configuration(resources.configuration)
+
+        if (info.screenOrientation != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+            requestedOrientation = info.screenOrientation
+        }
+        if (info.softInputMode != 0) {
+            window.setSoftInputMode(info.softInputMode)
+        }
+        // Applies to the whole task, which matches the case that matters: a root activity that
+        // asks to stay out of Recents.
+        if (info.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0) {
+            getSystemService(ActivityManager::class.java).appTasks
+                .firstOrNull { it.taskInfo.taskId == taskId }
+                ?.setExcludeFromRecents(true)
+        }
+    }
+
     @SuppressLint("MissingSuperCall")
     override fun onConfigurationChanged(newConfig: Configuration) {
+        // The host declares it handles every config change (the "Cfg" proxy pools) so a
+        // rotation doesn't recreate it under an app that handles rotation itself. For a change
+        // the loaded app did NOT opt into, the real system would have recreated it: do that.
+        val previous = lastConfiguration
+        lastConfiguration = Configuration(newConfig)
+        if (previous != null &&
+            DCLActivityProxyPool.needsRecreate(previous.diff(newConfig), hostedConfigChanges)
+        ) {
+            // The platform insists the host's own Activity.onConfigurationChanged ran (mCalled). On
+            // the forward path below that flag arrives from the shadow via the state sync; here
+            // nothing is forwarded, so call it ourselves.
+            super.onConfigurationChanged(newConfig)
+            recreate()
+            return
+        }
+
         // ActivityThread updates mCurrentConfig on the Activity it knows about (this host)
         // before calling onConfigurationChanged - mirror that on the shadow first, or the
         // state sync afterwards would copy the shadow's stale configuration back over ours.

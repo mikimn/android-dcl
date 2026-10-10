@@ -5,6 +5,9 @@
   disabled decoy alias that must be ignored.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:name=".ManifestApplication"
         android:label="fx-manifest"
@@ -30,7 +33,26 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".SecondActivity" android:exported="false" />
+        <activity
+            android:name=".SecondActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="stateHidden|adjustResize"
+            android:excludeFromRecents="true"
+            android:taskAffinity=".second" />
+
+        <!-- Data filter, for intent resolution tests. -->
+        <activity android:name=".ViewActivity" android:exported="true">
+            <intent-filter android:priority="5">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="fx.example.com" android:pathPrefix="/items" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <activity-alias
             android:name=".LauncherAlias"
@@ -55,6 +77,9 @@
         </activity-alias>
 
         <service android:name=".ExportedService" android:exported="true">
+            <intent-filter android:priority="-5">
+                <action android:name="fx.action.SERVE" />
+            </intent-filter>
             <meta-data android:name="svc.key" android:value="svc-value" />
         </service>
         <service android:name=".PrivateService" android:exported="false" />
@@ -65,6 +90,11 @@
             android:exported="false"
             android:grantUriPermissions="true" />
 
-        <receiver android:name=".FxReceiver" android:exported="false" />
+        <receiver android:name=".FxReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="fx.action.PING" />
+            </intent-filter>
+            <meta-data android:name="rcv.key" android:value="rcv-value" />
+        </receiver>
     </application>
 </manifest>
