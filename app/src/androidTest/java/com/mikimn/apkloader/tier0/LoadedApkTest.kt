@@ -197,7 +197,12 @@ class LoadedApkTest {
         val titleId = fx.id(pkg, "string", "title")
         assertThat(titleId).isNotEqualTo(0)
         assertThat(titleId ushr 24).isEqualTo(0x7f)
-        assertThat(fx.resources.getString(titleId)).isEqualTo("fx-resources title")
+        // The fixture ships a values-night variant of this string, so the right answer depends on the
+        // device's current dark-mode setting (resource qualifiers resolve for the loaded APK too).
+        val night = fx.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        assertThat(fx.resources.getString(titleId))
+            .isEqualTo(if (night) "fx-resources title (night)" else "fx-resources title")
     }
 
     @Test fun hostAndLoadedPackageIdsDoNotCollide() {
@@ -281,6 +286,15 @@ class LoadedApkTest {
         }
     }.toByteArray()
 
+    // A hostile archive is rejected either by our own zip-slip guard (SecurityException) or, on newer
+    // Android (observed on API 36), already by ZipFile while it opens the archive (ZipException:
+    // invalid entry path). Which one depends on the OS; what matters is that load() fails loudly
+    // and, in the tests below, that nothing is written outside, registered, or left behind.
+    private fun assertHostileRejected(block: () -> Unit) {
+        val e = assertThrows(Exception::class.java) { block() }
+        assertThat(e is SecurityException || e is java.util.zip.ZipException).isTrue()
+    }
+
     @Test fun apkWithPathTraversalEntryFailsLoudlyAndWritesNothingOutside() {
         val evil = zipWithEntry("../../escaped.txt")
         // The traversal is resolved against the per-APK cache dir (<tmpdir>/cache-evil.apk), so
@@ -294,7 +308,7 @@ class LoadedApkTest {
         assertThat(escapeDir.canWrite()).isTrue()
         escapeTarget.delete()
 
-        assertThrows(SecurityException::class.java) {
+        assertHostileRejected {
             fx.loadedApk("evil.apk").load(evil, fx.resources)
         }
 
@@ -304,7 +318,7 @@ class LoadedApkTest {
     }
 
     @Test fun hostileApkLeavesNoHalfExtractedCacheDir() {
-        assertThrows(SecurityException::class.java) {
+        assertHostileRejected {
             fx.loadedApk("evil.apk").load(zipWithEntry("../../escaped.txt"), fx.resources)
         }
         assertThat(cacheDir("evil.apk").exists()).isFalse()
@@ -312,14 +326,14 @@ class LoadedApkTest {
 
     @Test fun fileEntryResolvingToTheExtractionDirIsRejectedAndCleanedUp() {
         // "a/.." is a *file* entry that resolves to the extraction dir itself
-        assertThrows(SecurityException::class.java) {
+        assertHostileRejected {
             fx.loadedApk("evil.apk").load(zipWithEntry("a/.."), fx.resources)
         }
         assertThat(cacheDir("evil.apk").exists()).isFalse()
     }
 
     @Test fun hostileApkIsNeverRegisteredWithTheClassLoader() {
-        assertThrows(SecurityException::class.java) {
+        assertHostileRejected {
             fx.loader.addApkFile("evil.apk", zipWithEntry("../../escaped.txt"), fx.resources)
         }
         assertThat(fx.loader.apkFile("evil.apk")).isNull()
@@ -330,7 +344,7 @@ class LoadedApkTest {
 
     @Test fun failedLoadLeavesTheLoadedApkUnusable() {
         val apk = fx.loadedApk("evil.apk")
-        assertThrows(SecurityException::class.java) { apk.load(zipWithEntry("../../escaped.txt"), fx.resources) }
+        assertHostileRejected { apk.load(zipWithEntry("../../escaped.txt"), fx.resources) }
         assertThat(apk.loader).isNull()
         assertThrows(IllegalStateException::class.java) { apk.loadClass("com.example.Anything") }
     }

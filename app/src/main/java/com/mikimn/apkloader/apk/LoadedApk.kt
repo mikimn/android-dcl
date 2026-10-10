@@ -157,10 +157,13 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             }
             loaded = true
 
-        } catch (e: SecurityException) {
-            // A hostile archive (zip-slip): don't leave its half-extracted, attacker-controlled
-            // files in the cache. `loader` was never built, so nothing can class-load from them,
-            // and FileTrackingClassLoader.addApkFile never registers an APK whose load() threw.
+        } catch (e: Exception) {
+            // A failed load, above all a hostile archive (zip-slip): don't leave its half-extracted,
+            // attacker-controlled files in the cache. `loader` was never built, so nothing can
+            // class-load from them, and FileTrackingClassLoader.addApkFile never registers an APK
+            // whose load() threw. Not just SecurityException: newer Android's ZipFile rejects a
+            // traversal entry itself (ZipException) while it is being opened, after the extraction
+            // dir already exists, so every failure has to clean up.
             extractionDir?.deleteRecursively()
             throw e
         } finally {

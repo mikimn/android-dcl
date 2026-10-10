@@ -20,6 +20,19 @@ layer over real third-party APKs.
   -Pandroid.testInstrumentationRunnerArguments.class=com.mikimn.apkloader.HostAppSmokeTest
 ```
 
+### Running on a specific device
+
+`connectedDebugAndroidTest` runs on **every** attached device, including a phone you didn't mean to
+test on. Pin one with `ANDROID_SERIAL=<serial> ./gradlew connectedDebugAndroidTest` and check the
+`Starting N tests on <model>` lines in the output. Use a plain serial (`b61ad4f5`,
+`192.168.0.111:5555`); a wireless-debugging mDNS name (`adb-...._adb-tls-connect._tcp`) did not
+match and the run went to another device. A device that is attached twice (USB + Wi-Fi, or Wi-Fi +
+wireless debugging) gets two competing runs: disconnect the duplicate.
+
+The suite is expected to pass on both an old and a new Android: it has been run on API 30 (OnePlus
+6T) and API 36 (CPH2581). Tests must not assume device state (e.g. dark mode, see
+`loadedResourcesResolveByNameWithTheAppsOwnPackageId`).
+
 ## JVM unit tests (layer A)
 
 `./gradlew testDebugUnitTest` (no device). Plain JUnit + Truth for pure logic (`Zip`, `FieldMapper`,
