@@ -31,13 +31,13 @@ class ApkLoadingTest {
     private fun freshLoader() = FileTrackingClassLoader(fx.baseClassLoader)
     private fun intentFor(key: String, value: String) = Intent().putExtra(key, value)
 
-    @Test fun apkNameComesFromEitherExtraAndNavigationHopWins() {
+    @Test fun apkNameComesFromEitherExtraAndTheExplicitLaunchWinsAsInOnCreate() {
         assertThat(ApkLoading.apkNameOf(null)).isNull()
         assertThat(ApkLoading.apkNameOf(Intent())).isNull()
         assertThat(ApkLoading.apkNameOf(intentFor(DCLActivity.KEY_APK_ASSET_FILE_NAME, "a.apk"))).isEqualTo("a.apk")
         assertThat(ApkLoading.apkNameOf(intentFor(DCLActivity.KEY_LOADED_APK_NAME, "b.apk"))).isEqualTo("b.apk")
         val both = Intent().putExtra(DCLActivity.KEY_APK_ASSET_FILE_NAME, "a.apk").putExtra(DCLActivity.KEY_LOADED_APK_NAME, "b.apk")
-        assertThat(ApkLoading.apkNameOf(both)).isEqualTo("b.apk")
+        assertThat(ApkLoading.apkNameOf(both)).isEqualTo("a.apk") // same precedence as DCLActivity.onCreate
     }
 
     @Test fun loadRegistersTheApkAndIsIdempotent() {
@@ -65,6 +65,39 @@ class ApkLoadingTest {
         val loader = freshLoader()
         assertThat(ApkLoading.preload(context, loader, intentFor(DCLActivity.KEY_LOADED_APK_NAME, "/no/such/file.apk"))).isNull()
         assertThat(loader.apkFile("/no/such/file.apk")).isNull()
+    }
+
+    // preload() runs against the Application's Resources; DCLActivity.onCreate still calls
+    // initResourceLoader, which attaches the process-wide loader to the *activity's* Resources.
+    // Prove an unrelated Resources object (as an activity has) resolves a preloaded APK's resources.
+    @Test fun preloadedApkResourcesReachAnotherResourcesObjectThroughTheSharedLoader() {
+        val loader = freshLoader()
+        val pkg = "com.mikimn.fixture.resources"
+        ApkLoading.preload(context, loader, intentFor(DCLActivity.KEY_LOADED_APK_NAME, FixtureApks.install("fx-resources.apk").path))
+
+        val activityLikeResources = context.createConfigurationContext(android.content.res.Configuration()).resources
+        assertThat(activityLikeResources).isNotSameInstanceAs(context.resources)
+        assertThat(activityLikeResources.getIdentifier("title", "string", pkg)).isEqualTo(0) // not attached yet
+        activityLikeResources.addLoaders(loader.resourcesLoader) // what DCLActivity.initResourceLoader does
+        val id = activityLikeResources.getIdentifier("title", "string", pkg)
+        assertThat(id).isNotEqualTo(0)
+        assertThat(activityLikeResources.getString(id)).isEqualTo("fx-resources title")
+    }
+
+    @Test fun aHostileArchiveIsRejectedOnceAndNotExtractedAgain() {
+        val evil = java.io.File(context.filesDir, "evil-slip.apk")
+        java.util.zip.ZipOutputStream(evil.outputStream()).use {
+            it.putNextEntry(java.util.zip.ZipEntry("../../escape.txt")); it.write("x".toByteArray()); it.closeEntry()
+        }
+        val loader = freshLoader()
+        val intent = intentFor(DCLActivity.KEY_LOADED_APK_NAME, evil.path)
+        assertThat(ApkLoading.preload(context, loader, intent)).isNull()
+
+        val first = assertThrows(SecurityException::class.java) { ApkLoading.load(context, loader, evil.path) }
+        val second = assertThrows(SecurityException::class.java) { ApkLoading.load(context, loader, evil.path) }
+        assertThat(second).isSameInstanceAs(first) // remembered, not re-extracted
+        assertThat(loader.apkFile(evil.path)).isNull()
+        evil.delete()
     }
 
     // The process-death bug: saved state holding the loaded app's own Parcelable can only be read

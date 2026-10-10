@@ -24,6 +24,8 @@ object ApkLoading {
      */
     fun load(context: Context, loader: FileTrackingClassLoader, apkName: String): LoadedApk {
         loader.apkFile(apkName)?.let { return it }
+        // A hostile archive already failed the zip-slip guard in this process: don't extract it again.
+        rejected[apkName]?.let { throw it }
 
         val reader = AssetReader(context)
         val apkFile = File(apkName)
@@ -41,10 +43,17 @@ object ApkLoading {
         return loadedApk
     }
 
-    /** The APK a hosted-activity [intent] refers to (a navigation hop, or an explicit launch), if any. */
+    // Archives that failed the zip-slip guard, so a second activity instance (or DCLActivity.onCreate
+    // after a failed preload) reports the same failure instead of extracting the hostile APK again.
+    private val rejected = java.util.concurrent.ConcurrentHashMap<String, SecurityException>()
+
+    /**
+     * The APK a hosted-activity [intent] refers to (an explicit launch, or a navigation hop), if any.
+     * Same precedence as `DCLActivity.onCreate`.
+     */
     fun apkNameOf(intent: Intent?): String? =
-        intent?.getStringExtra(DCLActivity.KEY_LOADED_APK_NAME)
-            ?: intent?.getStringExtra(DCLActivity.KEY_APK_ASSET_FILE_NAME)
+        intent?.getStringExtra(DCLActivity.KEY_APK_ASSET_FILE_NAME)
+            ?: intent?.getStringExtra(DCLActivity.KEY_LOADED_APK_NAME)
 
     /**
      * Loads the APK [intent] refers to as early as possible. Needed when Android restores a hosted
@@ -62,7 +71,8 @@ object ApkLoading {
         return try {
             load(context, tracking, apkName)
         } catch (e: Throwable) {
-            Log.e(TAG, "Preload of $apkName failed; DCLActivity.onCreate will retry", e)
+            if (e is SecurityException) rejected[apkName] = e
+            Log.e(TAG, "Preload of $apkName failed; DCLActivity.onCreate will report it", e)
             null
         }
     }
