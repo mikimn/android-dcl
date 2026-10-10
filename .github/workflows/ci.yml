@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: Lint & unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Lint
+        run: ./gradlew lintDebug
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/lint-results-debug.*
+            app/build/reports/tests/
+            app/build/test-results/
+          if-no-files-found: ignore
+
+  build-apk:
+    name: Build test APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: lint-and-test
+    env:
+      SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: apkloader-debug-${{ github.run_number }}-${{ github.sha }}
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Email install link
+        # Secrets are unavailable to fork PRs and to Dependabot; skip rather than fail.
+        if: >-
+          env.SMTP_SERVER != '' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT || 465 }}
+          secure: ${{ (secrets.SMTP_PORT || '465') == '465' }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          to: ${{ secrets.CI_EMAIL_TO }}
+          from: ApkLoader CI <${{ secrets.SMTP_USERNAME }}>
+          subject: "ApkLoader test build #${{ github.run_number }} (${{ github.head_ref || github.ref_name }})"
+          html_body: |
+            <p>A new test build of <b>ApkLoader</b> is ready.</p>
+            <ul>
+              <li>Ref: <code>${{ github.head_ref || github.ref_name }}</code> @ <code>${{ github.sha }}</code></li>
+              <li>Event: ${{ github.event_name }}</li>
+            </ul>
+            <p><a href="${{ steps.upload.outputs.artifact-url }}">Download the APK (zip)</a>
+            &middot; <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">Run page</a></p>
+            <p>Open the link on your phone while signed in to GitHub, unzip, and install the
+            <code>.apk</code> (allow "install unknown apps" for your browser/Files app).
+            It is a debug-signed build, so it will not update a release-signed install.</p>
