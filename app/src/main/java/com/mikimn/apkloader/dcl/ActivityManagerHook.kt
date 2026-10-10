@@ -62,6 +62,9 @@ object ActivityManagerHook {
         }
     }
 
+    // Calls whose Intent names the target service (startForegroundService is startService + a flag).
+    private val SERVICE_METHODS = listOf("startService", "bindService", "bindIsolatedService", "stopService", "peekService")
+
     private class BroadcastRewritingHandler(
         private val real: Any,
         private val loader: FileTrackingClassLoader,
@@ -69,7 +72,40 @@ object ActivityManagerHook {
     ) : InvocationHandler {
         private val main = Handler(Looper.getMainLooper())
 
+        private fun rewriteServiceIntents(args: Array<out Any?>) {
+            val slots = ServiceSlotsHolder.get() ?: return
+            for (intent in args.filterIsInstance<Intent>()) {
+                when (val route = ServiceRouting.route(
+                    intent, hostPackageName, slots,
+                    apkNameOfClass = { loader.ownerOf(it)?.name },
+                    resolveByPackage = { resolveServiceByPackage(it) }
+                )) {
+                    is ServiceRouting.Route.Rewritten ->
+                        Log.i(TAG, "[Rewrite] service ${route.className} -> ${intent.component?.className}")
+                    is ServiceRouting.Route.NoFreeSlot ->
+                        Log.e(TAG, "No free service proxy slot for ${route.className}; it will not start")
+                    ServiceRouting.Route.None -> Unit
+                }
+            }
+        }
+
+        // A service intent restricted to a loaded package by action: the loaded service whose filter matches.
+        private fun resolveServiceByPackage(intent: Intent): Pair<String, String>? {
+            val pkg = intent.`package` ?: return null
+            if (!loader.isLoadedPackage(pkg)) return null
+            for (apk in loader.loadedApks()) {
+                val reader = apk.manifestReader ?: continue
+                if (reader.getApplicationInfo().packageName != pkg) continue
+                val match = com.mikimn.apkloader.apk.ComponentMatcher.resolve(pkg, reader.parseServices(), intent, 0) {
+                    android.content.pm.ResolveInfo().apply { serviceInfo = it }
+                }.firstOrNull()?.serviceInfo ?: continue
+                return match.name to apk.name
+            }
+            return null
+        }
+
         override fun invoke(proxy: Any?, method: Method, args: Array<out Any?>?): Any? {
+            if (args != null && SERVICE_METHODS.any { method.name.startsWith(it) }) rewriteServiceIntents(args)
             // broadcastIntent / broadcastIntentWithFeature (the signature grew across releases)
             if (method.name.startsWith("broadcastIntent") && args != null) {
                 for (intent in args.filterIsInstance<Intent>()) {
@@ -102,5 +138,16 @@ object ActivityManagerHook {
                 throw e.targetException
             }
         }
+    }
+}
+
+/** The process-wide [ServiceSlots], backed by the host's own SharedPreferences (stable across restarts). */
+object ServiceSlotsHolder {
+    @Volatile private var slots: ServiceSlots? = null
+
+    fun get(): ServiceSlots? = slots ?: synchronized(this) {
+        slots ?: ApkLoading.currentApplication()?.let {
+            ServiceSlots(PrefsStore(it.getSharedPreferences("dcl_service_slots", android.content.Context.MODE_PRIVATE)))
+        }?.also { slots = it }
     }
 }

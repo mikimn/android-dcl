@@ -1,6 +1,7 @@
 package com.mikimn.fixture.hello;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.widget.TextView;
@@ -9,6 +10,8 @@ import com.mikimn.fixture.common.Probe;
 /** Tier 0/1: one activity, no custom resources. Records its lifecycle and what it can see. */
 public class HelloActivity extends Activity {
     static final String CHANNEL = "fx-hello";
+
+    private android.content.ServiceConnection serviceConnection;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -30,6 +33,22 @@ public class HelloActivity extends Activity {
         sendBroadcast(new Intent(this, HelloReceiver.class).putExtra("via", "explicit"));
         sendBroadcast(new Intent("fx.hello.PING").putExtra("via", "implicit"));
         sendBroadcast(new Intent("fx.hello.PING").setPackage("com.mikimn.fixture.hello").putExtra("via", "package"));
+        // Our own service: started, bound, then unbound and stopped again a second later.
+        final Intent svc = new Intent(this, HelloService.class);
+        startService(svc.putExtra("via", "start"));
+        serviceConnection = new android.content.ServiceConnection() {
+            @Override public void onServiceConnected(android.content.ComponentName name, android.os.IBinder binder) {
+                Probe.value(HelloActivity.this, CHANNEL, "service.bound.answer", ((HelloService.LocalBinder) binder).answer());
+                new android.os.Handler(getMainLooper()).postDelayed(new Runnable() {
+                    @Override public void run() {
+                        unbindService(serviceConnection);
+                        stopService(svc);
+                    }
+                }, 1000);
+            }
+            @Override public void onServiceDisconnected(android.content.ComponentName name) {}
+        };
+        bindService(new Intent(this, HelloService.class), serviceConnection, Context.BIND_AUTO_CREATE);
         TextView text = new TextView(this);
         text.setText("hello from fx-hello");
         setContentView(text);

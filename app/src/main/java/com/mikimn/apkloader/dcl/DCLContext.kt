@@ -71,8 +71,16 @@ class DCLContext(
         }
     }
 
+    // Starting a service that is not a loaded app's own stays the legacy no-op (it can't be resolved in the
+    // host and used to be silently ignored); a loaded app's own service goes to the system, where
+    // ActivityManagerHook retargets it at a host proxy slot (see DCLService).
     override fun startService(service: Intent?): ComponentName? {
-        return service?.component
+        val loader = trackingLoader
+        val isLoaded = service != null && loader != null && (
+            service.component?.className?.let { loader.ownerOf(it) != null } == true ||
+                service.`package`?.let { loader.isLoadedPackage(it) } == true
+            )
+        return if (isLoaded) super.startService(service) else service?.component
     }
 
     // Only spoof the package name for callers that are the loaded APK's own code - real

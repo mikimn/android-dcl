@@ -147,6 +147,13 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   class (`ShadowActivity.shadowIntent`; the loader's own routing extras are stripped). It is set once at
   attach: like the platform, `onNewIntent` does not call `setIntent`, so apps that want the new intent
   as `getIntent()` call it themselves.
+- **Services** are hosted by a pool of manifest-declared `DCLServiceProxy0..15` slots (`DCLServiceProxyPool`).
+  `ActivityManagerHook` retargets `startService`/`bindService`/`stopService` for a loaded service class
+  at its slot (`ServiceRouting`), and `DCLAppComponentFactory.instantiateService` turns any slot into a
+  `DCLService` that `attach`es and drives the real loaded `Service`. The system creates a service with
+  **no intent** (on Android 11 `instantiateService(..., null)`, also on a restart), so what a slot hosts is
+  read from its **persisted** `slot -> (class, apk)` assignment (`ServiceSlots`, host SharedPreferences),
+  never from extras. A slot is one service instance, so two classes never share one.
 - **The system can't instantiate *any* receiver (or other component created via `handleReceiver`) in the
   host.** On Android 11 `ActivityThread.handleReceiver` casts `app.getBaseContext()` to `ContextImpl`,
   and `DCLApplication` wraps its base context in `DCLContext`, so a receiver declared in the host
