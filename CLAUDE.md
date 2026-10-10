@@ -48,8 +48,9 @@ Real-APK test results, and the root-cause write-ups behind most fixes, are recor
    `java.lang.reflect.Proxy`. Every outgoing `startActivity*` intent whose component belongs to a
    loaded APK (`FileTrackingClassLoader.ownerOf`) is rewritten to the next
    [`DCLActivityProxyPool`](app/src/main/java/com/mikimn/apkloader/dcl/DCLActivityProxyPool.kt)
-   slot (8 manifest-declared `standard` activities, round-robin), with the real class/APK name
-   stashed as extras. **This is how a loaded app's own in-app navigation works** — target
+   slot (manifest-declared placeholder activities chosen by the target's own `launchMode` and whether it
+   declares `configChanges`; same class -> same slot, so singleTop/clear-top work), with the real
+   class/APK name stashed as extras. **This is how a loaded app's own in-app navigation works** — target
    activities don't need host manifest entries.
 4. [`DCLActivity`](app/src/main/java/com/mikimn/apkloader/dcl/DCLActivity.kt) is the real host.
    `onCreate` either reads the target APK (`KEY_APK_ASSET_FILE_NAME`: an asset name or an

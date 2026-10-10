@@ -2,6 +2,7 @@ package com.mikimn.apkloader.dcl
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.Application
 import android.app.Instrumentation
 import android.content.ComponentName
@@ -165,6 +166,7 @@ class DCLActivity : ComponentActivity() {
             FieldMapper.copy(wrapped, it)
             wrapped
         }
+        aInfo?.let { applyActivityAttributes(it) }
 
         // Initialize providers
         val providers = manifestReader?.getProviders() ?: emptyList()
@@ -480,8 +482,46 @@ class DCLActivity : ComponentActivity() {
         overrideLifecycleCall("onNewIntent", Intent::class.java to intent)
     }
 
+    // What the loaded activity declared for itself, which the host's own (placeholder) manifest
+    // entry cannot express per activity - see DCLActivityProxyPool for the part that can.
+    private var hostedConfigChanges = 0
+    private var lastConfiguration: Configuration? = null
+
+    private fun applyActivityAttributes(info: ActivityInfo) {
+        hostedConfigChanges = info.configChanges
+        lastConfiguration = Configuration(resources.configuration)
+
+        if (info.screenOrientation != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+            requestedOrientation = info.screenOrientation
+        }
+        if (info.softInputMode != 0) {
+            window.setSoftInputMode(info.softInputMode)
+        }
+        if (info.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0) {
+            getSystemService(ActivityManager::class.java).appTasks
+                .firstOrNull { it.taskInfo.taskId == taskId }
+                ?.setExcludeFromRecents(true)
+        }
+    }
+
     @SuppressLint("MissingSuperCall")
     override fun onConfigurationChanged(newConfig: Configuration) {
+        // The host declares it handles every config change (the "Cfg" proxy pools) so a
+        // rotation doesn't recreate it under an app that handles rotation itself. For a change
+        // the loaded app did NOT opt into, the real system would have recreated it: do that.
+        val previous = lastConfiguration
+        lastConfiguration = Configuration(newConfig)
+        if (previous != null &&
+            DCLActivityProxyPool.needsRecreate(previous.diff(newConfig), hostedConfigChanges)
+        ) {
+            // The platform insists the host's own Activity.onConfigurationChanged ran (mCalled). On
+            // the forward path below that flag arrives from the shadow via the state sync; here
+            // nothing is forwarded, so call it ourselves.
+            super.onConfigurationChanged(newConfig)
+            recreate()
+            return
+        }
+
         // ActivityThread updates mCurrentConfig on the Activity it knows about (this host)
         // before calling onConfigurationChanged - mirror that on the shadow first, or the
         // state sync afterwards would copy the shadow's stale configuration back over ours.

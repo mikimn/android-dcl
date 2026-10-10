@@ -29,6 +29,53 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
     private var providers: List<ProviderInfo>? = null
     private var activities: List<Pair<ActivityInfo, List<IntentFilter>>>? = null
 
+    private companion object {
+        val LAUNCH_MODES = mapOf(
+            "standard" to ActivityInfo.LAUNCH_MULTIPLE,
+            "singleTop" to ActivityInfo.LAUNCH_SINGLE_TOP,
+            "singleTask" to ActivityInfo.LAUNCH_SINGLE_TASK,
+            "singleInstance" to ActivityInfo.LAUNCH_SINGLE_INSTANCE,
+        )
+
+        // android:screenOrientation, as ActivityInfo.SCREEN_ORIENTATION_*.
+        val SCREEN_ORIENTATIONS = mapOf(
+            "unspecified" to ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
+            "landscape" to ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            "portrait" to ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            "user" to ActivityInfo.SCREEN_ORIENTATION_USER,
+            "behind" to ActivityInfo.SCREEN_ORIENTATION_BEHIND,
+            "sensor" to ActivityInfo.SCREEN_ORIENTATION_SENSOR,
+            "nosensor" to ActivityInfo.SCREEN_ORIENTATION_NOSENSOR,
+            "sensorLandscape" to ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+            "sensorPortrait" to ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT,
+            "reverseLandscape" to ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,
+            "reversePortrait" to ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT,
+            "fullSensor" to ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR,
+            "userLandscape" to ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE,
+            "userPortrait" to ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT,
+            "fullUser" to ActivityInfo.SCREEN_ORIENTATION_FULL_USER,
+            "locked" to ActivityInfo.SCREEN_ORIENTATION_LOCKED,
+        )
+
+        // android:windowSoftInputMode: state* (low nibble) | adjust* (second nibble), as the
+        // WindowManager.LayoutParams.SOFT_INPUT_* values.
+        val SOFT_INPUT_MODES = mapOf(
+            "stateUnspecified" to 0, "stateUnchanged" to 1, "stateHidden" to 2, "stateAlwaysHidden" to 3,
+            "stateVisible" to 4, "stateAlwaysVisible" to 5,
+            "adjustUnspecified" to 0x00, "adjustResize" to 0x10, "adjustPan" to 0x20, "adjustNothing" to 0x30,
+        )
+
+        // android:configChanges, as ActivityInfo.CONFIG_* (the same bits Configuration.diff reports).
+        val CONFIG_CHANGES = mapOf(
+            "mcc" to 0x0001, "mnc" to 0x0002, "locale" to 0x0004, "touchscreen" to 0x0008,
+            "keyboard" to 0x0010, "keyboardHidden" to 0x0020, "navigation" to 0x0040,
+            "orientation" to 0x0080, "screenLayout" to 0x0100, "uiMode" to 0x0200,
+            "screenSize" to 0x0400, "smallestScreenSize" to 0x0800, "density" to 0x1000,
+            "layoutDirection" to 0x2000, "colorMode" to 0x4000, "grammaticalGender" to 0x8000,
+            "fontScale" to 0x40000000, "fontWeightAdjustment" to 0x10000000,
+        )
+    }
+
     fun parseActivities(): List<Pair<ActivityInfo, List<IntentFilter>>> {
         if (activities != null) {
             return activities!!
@@ -51,6 +98,8 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
                     info.name = attr.nodeValue
                 } else if (attr.localName == "theme") {
                     info.theme = attr.nodeValue.replace("@id/0x", "").toInt(16)
+                } else {
+                    applyActivityAttribute(info, attr.localName, attr.nodeValue)
                 }
             }
 
@@ -196,6 +245,40 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
         // Cache
         applicationInfo = aInfo
         return aInfo
+    }
+
+    /**
+     * The window/task attributes a host proxy activity has to imitate (see DCLActivityProxyPool
+     * and DCLActivity.applyActivityAttributes). The binary-XML parser renders enum/flag
+     * attributes as a number (decimal or `0x` hex) and sometimes as the symbolic name(s).
+     */
+    private fun applyActivityAttribute(info: ActivityInfo, name: String, value: String) {
+        when (name) {
+            "launchMode" -> info.launchMode = parseEnum(value, LAUNCH_MODES) ?: info.launchMode
+            "configChanges" -> info.configChanges = parseFlags(value, CONFIG_CHANGES) ?: info.configChanges
+            "screenOrientation" -> info.screenOrientation = parseEnum(value, SCREEN_ORIENTATIONS) ?: info.screenOrientation
+            "windowSoftInputMode" -> info.softInputMode = parseFlags(value, SOFT_INPUT_MODES) ?: info.softInputMode
+            "excludeFromRecents" ->
+                if (value.toBoolean()) info.flags = info.flags or ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS
+            "taskAffinity" -> info.taskAffinity = value
+            "exported" -> info.exported = value.toBoolean()
+            "enabled" -> info.enabled = value != "false"
+        }
+    }
+
+    private fun parseNumber(value: String): Int? =
+        if (value.startsWith("0x")) value.substring(2).toLongOrNull(16)?.toInt() else value.toIntOrNull()
+
+    private fun parseEnum(value: String, names: Map<String, Int>): Int? = parseNumber(value) ?: names[value]
+
+    /** A `|`-separated flag set, as either one number or symbolic names. */
+    private fun parseFlags(value: String, names: Map<String, Int>): Int? {
+        parseNumber(value)?.let { return it }
+        var result = 0
+        for (part in value.split('|').map { it.trim() }.filter { it.isNotEmpty() }) {
+            result = result or (parseNumber(part) ?: names[part] ?: return null)
+        }
+        return result
     }
 
     /** Parses a component node's <meta-data> children into a Bundle, resolving @id/ references. */
