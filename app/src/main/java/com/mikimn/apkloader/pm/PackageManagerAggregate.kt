@@ -151,6 +151,52 @@ class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManage
     override fun resolveActivity(intent: Intent, flags: ResolveInfoFlags): ResolveInfo? =
         resolveActivity(intent, flags.value.toInt())
 
+    // --- intent queries: plugin answers first, then whatever the real PackageManager knows ---
+
+    private fun queryWithPlugins(
+        flags: Int,
+        fromPlugin: (PackageManagerPlugin) -> List<ResolveInfo>?,
+        fromBase: () -> List<ResolveInfo>
+    ): MutableList<ResolveInfo> {
+        val result = mutableListOf<ResolveInfo>()
+        for (plugin in pluginList) fromPlugin(plugin)?.let { result.addAll(it) }
+        result.addAll(fromBase())
+        return result
+    }
+
+    override fun queryIntentActivities(p0: Intent, p1: Int): MutableList<ResolveInfo> =
+        queryWithPlugins(p1, { it.queryIntentActivities(p0, p1) }, { super.queryIntentActivities(p0, p1) })
+
+    override fun queryIntentServices(p0: Intent, p1: Int): MutableList<ResolveInfo> =
+        queryWithPlugins(p1, { it.queryIntentServices(p0, p1) }, { super.queryIntentServices(p0, p1) })
+
+    override fun queryBroadcastReceivers(p0: Intent, p1: Int): MutableList<ResolveInfo> =
+        queryWithPlugins(p1, { it.queryBroadcastReceivers(p0, p1) }, { super.queryBroadcastReceivers(p0, p1) })
+
+    override fun resolveService(p0: Intent, p1: Int): ResolveInfo? =
+        queryIntentServices(p0, p1).firstOrNull()
+
+    override fun getLaunchIntentForPackage(p0: String): Intent? {
+        for (plugin in pluginList) plugin.getLaunchIntentForPackage(p0)?.let { return it }
+        return super.getLaunchIntentForPackage(p0)
+    }
+
+    @RequiresApi(33)
+    override fun queryIntentActivities(p0: Intent, p1: ResolveInfoFlags): MutableList<ResolveInfo> =
+        queryIntentActivities(p0, p1.value.toInt())
+
+    @RequiresApi(33)
+    override fun queryIntentServices(p0: Intent, p1: ResolveInfoFlags): MutableList<ResolveInfo> =
+        queryIntentServices(p0, p1.value.toInt())
+
+    @RequiresApi(33)
+    override fun queryBroadcastReceivers(p0: Intent, p1: ResolveInfoFlags): MutableList<ResolveInfo> =
+        queryBroadcastReceivers(p0, p1.value.toInt())
+
+    @RequiresApi(33)
+    override fun resolveService(p0: Intent, p1: ResolveInfoFlags): ResolveInfo? =
+        resolveService(p0, p1.value.toInt())
+
     fun addPlugin(plugin: PackageManagerPlugin) {
         pluginList.add(0, plugin)
     }

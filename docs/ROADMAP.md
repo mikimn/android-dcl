@@ -12,7 +12,7 @@ signing (documented for completeness; likely won't fix).
 | R2 | #14 | 1 | [Load native libraries bundled inside a standalone APK](#r2) | done (pending device verification) |
 | R3 | #15 | 1 | [Remove hardcoded entry points, activity whitelist and host package name](#r3) | done (pending device verification) |
 | R4 | #16 | 1 | [Survive process death: reload the APK when a proxy activity is restored](#r4) | done (pending device verification) |
-| R5 | #17 | 2 | [Complete PackageManager answers for loaded packages](#r5) | open |
+| R5 | #17 | 2 | [Complete PackageManager answers for loaded packages](#r5) | partial: receivers, version/permissions, intent queries done; signatures and `getInstallSourceInfo` open |
 | R6 | #18 | 2 | [Per-package data directory isolation](#r6) | open |
 | R7 | #19 | 2 | [Point ApplicationInfo paths at the loaded APK and use a file-backed dex loader](#r7) | open |
 | R8 | #20 | 2 | [Honor launchMode, flags and per-activity attributes in proxy activities](#r8) | open |
