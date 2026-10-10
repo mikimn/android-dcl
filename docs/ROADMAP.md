@@ -14,7 +14,7 @@ signing (documented for completeness; likely won't fix).
 | R4 | #16 | 1 | [Survive process death: reload the APK when a proxy activity is restored](#r4) | done (pending device verification) |
 | R5 | #17 | 2 | [Complete PackageManager answers for loaded packages](#r5) | partial: receivers, version/permissions, intent queries done; signatures and `getInstallSourceInfo` open |
 | R6 | #18 | 2 | [Per-package data directory isolation](#r6) | open |
-| R7 | #19 | 2 | [Point ApplicationInfo paths at the loaded APK and use a file-backed dex loader](#r7) | open |
+| R7 | #19 | 2 | [Point ApplicationInfo paths at the loaded APK and use a file-backed dex loader](#r7) | partial: file-backed loader + `ApplicationInfo` paths done; `Context.getPackageCodePath()` pending #18 |
 | R8 | #20 | 2 | [Honor launchMode, flags and per-activity attributes in proxy activities](#r8) | open |
 | R9 | #21 | 2 | [Fix ContentProvider initialization order and context](#r9) | open |
 | R10 | #22 | 2 | [Support multiple loaded APKs concurrently](#r10) | open |

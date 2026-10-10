@@ -101,6 +101,94 @@ class LoadedApkTest {
         assertThat(cacheDir("fx-resources.apk").list()!!.toList()).contains("assets")
     }
 
+    // ---- on-disk APK, file-backed loader, ApplicationInfo paths -------------------------------
+
+    @Test fun apkIsKeptOnDiskReadOnlyAndMatchesTheInput() {
+        val apk = fx.load("fx-hello.apk")
+        val onDisk = apk.paths!!.apk
+        assertThat(onDisk.isFile).isTrue()
+        assertThat(onDisk.canWrite()).isFalse()
+        assertThat(onDisk.readBytes()).isEqualTo(FixtureApks.install("fx-hello.apk").readBytes())
+        assertThat(onDisk.parentFile).isEqualTo(File(System.getProperty("java.io.tmpdir")!!))
+    }
+
+    @Test fun classesAreLoadedByAFileBackedDexClassLoader() {
+        val apk = fx.load("fx-hello.apk")
+        assertThat(apk.loader).isInstanceOf(dalvik.system.DexClassLoader::class.java)
+        assertThat(apk.loader.toString()).contains(apk.paths!!.apk.path)
+    }
+
+    @Test fun applicationInfoPointsAtTheLoadedApk() {
+        val apk = fx.load("fx-hello.apk")
+        val info = apk.manifestReader!!.getApplicationInfo()
+        assertThat(info.sourceDir).isEqualTo(apk.paths!!.apk.path)
+        assertThat(info.publicSourceDir).isEqualTo(apk.paths!!.apk.path)
+        assertThat(info.splitSourceDirs).isNull() // loaded from assets: no installed splits
+        // ...and it is a real, reopenable APK (what a library that reopens itself relies on).
+        java.util.zip.ZipFile(info.sourceDir).use { assertThat(it.getEntry("AndroidManifest.xml")).isNotNull() }
+        assertThat(info.sourceDir).isNotEqualTo(fx.targetContext.applicationInfo.sourceDir)
+    }
+
+    @Test fun reloadingTheSameNameDoesNotBreakAnEarlierLoader() {
+        val first = fx.load("fx-hello.apk")
+        // Replaces the on-disk file (by rename) while `first`'s loader still reads the old one.
+        fx.loadedApk("fx-hello.apk").load(FixtureApks.install("fx-hello.apk").readBytes(), fx.resources)
+        assertThat(first.loadClass("com.mikimn.fixture.common.Probe").classLoader).isSameInstanceAs(first.loader)
+    }
+
+    @Test fun failedLoadLeavesNoApkBehind() {
+        val bad = fx.loadedApk("not-an-apk.apk")
+        assertThrows(Exception::class.java) { bad.load("definitely not a zip".toByteArray(), fx.resources) }
+        assertThat(bad.paths).isNull()
+        assertThat(copiesOf("not-an-apk.apk")).isEmpty()
+    }
+
+    private val tmpDir get() = File(System.getProperty("java.io.tmpdir")!!)
+    private fun copiesOf(name: String) =
+        tmpDir.listFiles { f -> f.isFile && f.name.startsWith("cache-$name.") && f.name.endsWith(".apk") }!!.toList()
+
+    @Test fun eachLoadGetsItsOwnApkFile() {
+        val first = fx.load("fx-hello.apk")
+        val second = fx.loadedApk("fx-hello.apk").also { it.load(FixtureApks.install("fx-hello.apk").readBytes(), fx.resources) }
+        assertThat(second.paths!!.apk).isNotEqualTo(first.paths!!.apk)
+        assertThat(first.paths!!.apk.exists()).isTrue() // an earlier loader's file is never replaced
+        assertThat(copiesOf("fx-hello.apk")).containsAtLeast(first.paths!!.apk, second.paths!!.apk)
+    }
+
+    @Test fun aFailedReloadKeepsTheEarlierLoadedApksFile() {
+        val first = fx.load("fx-hello.apk")
+        val bad = fx.loadedApk("fx-hello.apk")
+        assertThrows(Exception::class.java) { bad.load("not a zip".toByteArray(), fx.resources) }
+        assertThat(first.paths!!.apk.exists()).isTrue()
+        assertThat(first.manifestReader!!.getApplicationInfo().sourceDir).isEqualTo(first.paths!!.apk.path)
+        assertThat(first.loadClass(helloActivity).classLoader).isSameInstanceAs(first.loader)
+        assertThat(copiesOf("fx-hello.apk")).containsExactly(first.paths!!.apk)
+    }
+
+    // Leftovers of earlier processes (this test runs in a fresh process, so none of the files
+    // below were written by this one) are removed on the first load; extraction dirs are not.
+    @Test fun staleApkCopiesAndPartFilesAreSweptOnTheFirstLoad() {
+        val staleApk = File(tmpDir, "cache-stale-one.apk.3.apk").apply { writeText("x") }
+        val stalePart = File(tmpDir, "cache-stale-one.apk.3.apk123.part").apply { writeText("x") }
+        val unrelated = File(tmpDir, "unrelated-file.apk").apply { writeText("x") }
+        val extractionDir = File(tmpDir, "cache-stale-dir.apk").apply { mkdirs() }
+        try {
+            val first = fx.load("fx-hello.apk")
+            assertThat(staleApk.exists()).isFalse()
+            assertThat(stalePart.exists()).isFalse()
+            assertThat(unrelated.exists()).isTrue()
+            assertThat(extractionDir.isDirectory).isTrue()
+            assertThat(first.paths!!.apk.exists()).isTrue()
+            // only the first load of a process sweeps: a later leftover survives
+            val late = File(tmpDir, "cache-late.apk.1.apk").apply { writeText("x") }
+            fx.load("fx-resources.apk")
+            assertThat(late.exists()).isTrue()
+            late.delete()
+        } finally {
+            unrelated.delete(); extractionDir.delete()
+        }
+    }
+
     // ---- resources --------------------------------------------------------------------------
 
     @Test fun loadedResourcesResolveByNameWithTheAppsOwnPackageId() {
