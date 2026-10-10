@@ -173,4 +173,52 @@ class PackageManagerAggregateTest {
         assertThat(agg.getPackagesForUid(other)).isEqualTo(base.getPackagesForUid(other))
         assertThat(consulted).isFalse()
     }
+
+    // --- intent queries & launch intents ---
+
+    private fun ri(label: String) = ResolveInfo().apply { resolvePackageName = label }
+
+    private fun queryPlugin(label: String?) = object : PackageManagerPlugin by FakePlugin("x.pkg", "x") {
+        override fun queryIntentActivities(intent: Intent, flags: Int): List<ResolveInfo>? = label?.let { listOf(ri(it)) }
+        override fun queryIntentServices(intent: Intent, flags: Int): List<ResolveInfo>? = label?.let { listOf(ri(it)) }
+        override fun queryBroadcastReceivers(intent: Intent, flags: Int): List<ResolveInfo>? = label?.let { listOf(ri(it)) }
+        override fun getLaunchIntentForPackage(packageName: String): Intent? =
+            if (label != null && packageName == "x.pkg") Intent("launch-$label") else null
+    }
+
+    @Test fun queryResultsFromAllPluginsAreMergedAheadOfTheBase() {
+        val agg = aggregate(queryPlugin("one"), queryPlugin(null), queryPlugin("two"))
+        val intent = Intent("fx.nothing.in.base")
+        assertThat(agg.queryIntentActivities(intent, 0).map { it.resolvePackageName }).containsExactly("one", "two").inOrder()
+        assertThat(agg.queryIntentServices(intent, 0).map { it.resolvePackageName }).containsExactly("one", "two").inOrder()
+        assertThat(agg.queryBroadcastReceivers(intent, 0).map { it.resolvePackageName }).containsExactly("one", "two").inOrder()
+    }
+
+    @Test fun pluginsWithNoOpinionLeaveTheBaseResultsAlone() {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val agg = aggregate(queryPlugin(null))
+        assertThat(agg.queryIntentActivities(intent, 0).size).isEqualTo(base.queryIntentActivities(intent, 0).size)
+    }
+
+    @Test fun resolveServicePrefersPluginAnswer() {
+        val agg = aggregate(queryPlugin("svc"))
+        assertThat(agg.resolveService(Intent("fx.nothing.in.base"), 0)?.resolvePackageName).isEqualTo("svc")
+        assertThat(aggregate(queryPlugin(null)).resolveService(Intent("fx.nothing.in.base"), 0)).isNull()
+    }
+
+    @Test fun flagsOverloadsOfQueriesGoThroughPlugins() {
+        val agg = aggregate(queryPlugin("one"))
+        val flags = PackageManager.ResolveInfoFlags.of(0)
+        val intent = Intent("fx.nothing.in.base")
+        assertThat(agg.queryIntentActivities(intent, flags).map { it.resolvePackageName }).containsExactly("one")
+        assertThat(agg.queryIntentServices(intent, flags).map { it.resolvePackageName }).containsExactly("one")
+        assertThat(agg.queryBroadcastReceivers(intent, flags).map { it.resolvePackageName }).containsExactly("one")
+        assertThat(agg.resolveService(intent, flags)?.resolvePackageName).isEqualTo("one")
+    }
+
+    @Test fun launchIntentComesFromThePluginElseTheBase() {
+        val agg = aggregate(queryPlugin("one"))
+        assertThat(agg.getLaunchIntentForPackage("x.pkg")?.action).isEqualTo("launch-one")
+        assertThat(agg.getLaunchIntentForPackage("no.such.pkg.anywhere")).isEqualTo(base.getLaunchIntentForPackage("no.such.pkg.anywhere"))
+    }
 }

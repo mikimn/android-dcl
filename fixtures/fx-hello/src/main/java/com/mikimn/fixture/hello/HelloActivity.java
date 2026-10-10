@@ -21,6 +21,7 @@ public class HelloActivity extends Activity {
         Probe.value(this, CHANNEL, "intent.data", launch.getDataString());
         Probe.value(this, CHANNEL, "intent.extra", launch.getStringExtra("fx.extra"));
         Probe.value(this, CHANNEL, "intent.component", launch.getComponent() == null ? null : launch.getComponent().getClassName());
+        Probe.value(this, CHANNEL, "intent.package", launch.getComponent() == null ? null : launch.getComponent().getPackageName());
         Probe.value(this, CHANNEL, "intent.hostExtras",
             launch.hasExtra("activityClassName") || launch.hasExtra("apkAssetFileName") || launch.hasExtra("loadedApkName"));
         TextView text = new TextView(this);

@@ -111,7 +111,13 @@ object ActivityTaskManagerHook {
             if (DCLActivityProxyPool.isProxyClassName(targetClassName)) return
 
             val owningApk = loader.ownerOf(targetClassName) ?: return
-            val proxyClassName = DCLActivityProxyPool.nextClassName()
+            // The target's own manifest attributes pick the pool (launch mode, config handling);
+            // an activity the manifest doesn't list (e.g. an alias) falls back to the defaults.
+            val targetInfo = owningApk.manifestReader?.parseActivities()
+                ?.firstOrNull { it.first.name == targetClassName }?.first
+            val proxyClassName = DCLActivityProxyPool.classNameFor(
+                targetClassName, targetInfo?.launchMode ?: 0, targetInfo?.configChanges ?: 0
+            )
 
             Log.i(TAG, "[Rewrite] $targetClassName (apk=${owningApk.name}) -> $proxyClassName")
 

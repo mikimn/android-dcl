@@ -898,12 +898,14 @@
 
         </activity>
 
-        <!-- DCLActivityProxyPool: generic in-app-navigation targets. Each slot hosts a
-             real DCLActivity instance (see DCLAppComponentFactory.instantiateActivity)
-             for whichever loaded-APK activity ActivityTaskManagerHook retargets to it -
-             standard launchMode so each gets its own back-stack entry, unlike DCLActivity's
-             own singleTask entry above (kept for the existing intentForAPK entry-point
-             flow). Count must match DCLActivityProxyPool.SIZE. -->
+        <!-- DCLActivityProxyPool: generic in-app-navigation targets. Each slot hosts a real
+             DCLActivity instance (see DCLAppComponentFactory.instantiateActivity) for whichever
+             loaded-APK activity ActivityTaskManagerHook retargets to it. The pool is chosen from the
+             target's own manifest attributes: launchMode, and a "Cfg" variant that handles every
+             configuration change itself (DCLActivity recreates on demand for changes the loaded app
+             did not opt into). DCLActivityProxyPool.allClassNames() must match this list exactly
+             (DCLActivityProxyPoolTest checks it). DCLActivity's own singleTask entry above is kept
+             for the intentForAPK entry-point flow. -->
         <activity android:name=".dcl.DCLActivityProxy0" android:launchMode="standard" android:exported="false" />
         <activity android:name=".dcl.DCLActivityProxy1" android:launchMode="standard" android:exported="false" />
         <activity android:name=".dcl.DCLActivityProxy2" android:launchMode="standard" android:exported="false" />
@@ -912,6 +914,58 @@
         <activity android:name=".dcl.DCLActivityProxy5" android:launchMode="standard" android:exported="false" />
         <activity android:name=".dcl.DCLActivityProxy6" android:launchMode="standard" android:exported="false" />
         <activity android:name=".dcl.DCLActivityProxy7" android:launchMode="standard" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleTop0" android:launchMode="singleTop" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleTop1" android:launchMode="singleTop" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleTop2" android:launchMode="singleTop" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleTop3" android:launchMode="singleTop" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleTask0" android:launchMode="singleTask" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleTask1" android:launchMode="singleTask" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleTask2" android:launchMode="singleTask" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleTask3" android:launchMode="singleTask" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleInstance0" android:launchMode="singleInstance" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleInstance1" android:launchMode="singleInstance" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleInstance2" android:launchMode="singleInstance" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxySingleInstance3" android:launchMode="singleInstance" android:exported="false" />
+        <activity android:name=".dcl.DCLActivityProxyCfg0" android:launchMode="standard" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxyCfg1" android:launchMode="standard" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxyCfg2" android:launchMode="standard" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxyCfg3" android:launchMode="standard" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxyCfg4" android:launchMode="standard" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxyCfg5" android:launchMode="standard" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxyCfg6" android:launchMode="standard" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxyCfg7" android:launchMode="standard" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleTopCfg0" android:launchMode="singleTop" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleTopCfg1" android:launchMode="singleTop" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleTopCfg2" android:launchMode="singleTop" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleTopCfg3" android:launchMode="singleTop" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleTaskCfg0" android:launchMode="singleTask" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleTaskCfg1" android:launchMode="singleTask" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleTaskCfg2" android:launchMode="singleTask" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleTaskCfg3" android:launchMode="singleTask" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleInstanceCfg0" android:launchMode="singleInstance" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleInstanceCfg1" android:launchMode="singleInstance" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleInstanceCfg2" android:launchMode="singleInstance" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
+        <activity android:name=".dcl.DCLActivityProxySingleInstanceCfg3" android:launchMode="singleInstance" android:exported="false"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
 
         <activity android:name="com.shazam.android.activities.ConfigurationActivity"
             android:exported="true">

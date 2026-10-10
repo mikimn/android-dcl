@@ -28,8 +28,10 @@ class ShadowActivityIntentTest {
         .putExtra(DCLActivity.KEY_LOADED_APK_NAME, "/data/app/x/base.apk")
         .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
 
+    private val loadedPackage = "com.example.loaded"
+
     private fun shadow(host: Intent?) =
-        ShadowActivity.shadowIntent(host, context, String::class.java, hostOnly)
+        ShadowActivity.shadowIntent(host, loadedPackage, String::class.java, hostOnly)
 
     @Test fun carriesWhatTheLauncherPassed() {
         val intent = shadow(hostIntent())
@@ -40,9 +42,10 @@ class ShadowActivityIntentTest {
         assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
     }
 
-    @Test fun isPointedAtTheShadowClassNotTheProxySlot() {
+    @Test fun isPointedAtTheShadowClassInTheLoadedPackageNotTheProxySlot() {
         val intent = shadow(hostIntent())
-        assertThat(intent.component).isEqualTo(ComponentName(context, String::class.java))
+        assertThat(intent.component).isEqualTo(ComponentName("com.example.loaded", "java.lang.String"))
+        assertThat(intent.component!!.packageName).isNotEqualTo(context.packageName)
     }
 
     @Test fun hidesTheLoadersOwnRoutingExtras() {
@@ -61,7 +64,7 @@ class ShadowActivityIntentTest {
 
     @Test fun withoutAHostIntentItIsJustTheComponent() {
         val intent = shadow(null)
-        assertThat(intent.component).isEqualTo(ComponentName(context, String::class.java))
+        assertThat(intent.component).isEqualTo(ComponentName(loadedPackage, "java.lang.String"))
         assertThat(intent.action).isNull()
         assertThat(intent.extras).isNull()
     }

@@ -20,7 +20,8 @@ import org.junit.runner.RunWith
 class HostedActivityIntentTest {
     @get:Rule val crashRule = LogcatCrashRule()
     private val target = InstrumentationRegistry.getInstrumentation().targetContext
-    private val probe = ProbeChannel(target, "fx-hello").also { it.clear() }
+    // A hosted fixture writes under its own per-package storage (docs/TESTING.md, "Per-package storage").
+    private val probe = ProbeChannel(target, "fx-hello", loadedPackage = "com.mikimn.fixture.hello").also { it.clear() }
 
     @Test fun shadowActivityGetsExtrasActionAndDataButNotTheLoadersOwnExtras() {
         val intent = DCLActivity.intentForAPK(target, FixtureApks.install("fx-hello.apk").path)
@@ -35,6 +36,7 @@ class HostedActivityIntentTest {
         assertThat(probe.valueOf("intent.data")).isEqualTo("https://example.com/item/7")
         assertThat(probe.valueOf("intent.extra")).isEqualTo("from-launcher")
         assertThat(probe.valueOf("intent.component")).isEqualTo("com.mikimn.fixture.hello.HelloActivity")
+        assertThat(probe.valueOf("intent.package")).isEqualTo("com.mikimn.fixture.hello") // the loaded package, not the host's
         assertThat(probe.valueOf("intent.hostExtras")).isEqualTo("false")
     }
 }

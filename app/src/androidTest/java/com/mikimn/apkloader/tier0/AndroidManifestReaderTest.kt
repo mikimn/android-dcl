@@ -2,6 +2,8 @@ package com.mikimn.apkloader.tier0
 
 import android.content.ComponentName
 import android.content.Intent
+import android.view.WindowManager
+import android.content.pm.ActivityInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.common.truth.Truth.assertThat
 import com.mikimn.apkloader.apk.AndroidManifestReader
@@ -88,7 +90,7 @@ class AndroidManifestReaderTest {
 
     @Test fun parsesAllActivitiesButNotAliases() {
         val names = reader("fx-manifest.apk").parseActivities().map { it.first.name }
-        assertThat(names).containsExactly("$pkg.MainActivity", "$pkg.SecondActivity")
+        assertThat(names).containsExactly("$pkg.MainActivity", "$pkg.SecondActivity", "$pkg.ViewActivity")
     }
 
     @Test fun activityIntentFilterIsParsed() {
@@ -101,6 +103,27 @@ class AndroidManifestReaderTest {
     @Test fun activityWithoutFilterHasNone() {
         val second = reader("fx-manifest.apk").parseActivities().first { it.first.name == "$pkg.SecondActivity" }
         assertThat(second.second).isEmpty()
+    }
+
+    @Test fun activityWindowAndTaskAttributesAreParsed() {
+        val second = reader("fx-manifest.apk").parseActivities().first { it.first.name == "$pkg.SecondActivity" }.first
+        assertThat(second.launchMode).isEqualTo(ActivityInfo.LAUNCH_SINGLE_TOP)
+        assertThat(second.configChanges).isEqualTo(ActivityInfo.CONFIG_ORIENTATION or ActivityInfo.CONFIG_SCREEN_SIZE)
+        assertThat(second.screenOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+        assertThat(second.softInputMode)
+            .isEqualTo(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        assertThat(second.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS).isNotEqualTo(0)
+        assertThat(second.taskAffinity).isEqualTo(".second")
+        assertThat(second.exported).isFalse()
+    }
+
+    @Test fun activityWithoutThoseAttributesKeepsPlatformDefaults() {
+        val main = reader("fx-manifest.apk").parseActivities().first { it.first.name == "$pkg.MainActivity" }.first
+        assertThat(main.launchMode).isEqualTo(ActivityInfo.LAUNCH_MULTIPLE)
+        assertThat(main.configChanges).isEqualTo(0)
+        assertThat(main.screenOrientation).isEqualTo(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
+        assertThat(main.softInputMode).isEqualTo(0)
+        assertThat(main.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS).isEqualTo(0)
     }
 
     @Test fun activityThemeIsParsedAndAppInfoAttached() {
