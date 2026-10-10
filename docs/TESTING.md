@@ -30,7 +30,10 @@ match and the run went to another device. A device that is attached twice (USB +
 wireless debugging) gets two competing runs: disconnect the duplicate.
 
 The suite is expected to pass on both an old and a new Android: it has been run on API 30 (OnePlus
-6T) and API 36 (CPH2581). Tests must not assume device state (e.g. dark mode, see
+6T) and API 36 (CPH2581). On API 36 that means the fixture suite: loader, provider registration,
+hidden-API exemptions (HiddenApiBypass 6.x changes how they are applied), per-package storage and
+navigation. **Real third-party apps (e.g. OnePlus Notes) have not been run there.** API 34/35 were not
+run. Tests must not assume device state (e.g. dark mode, see
 `loadedResourcesResolveByNameWithTheAppsOwnPackageId`).
 
 ## JVM unit tests (layer A)

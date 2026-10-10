@@ -52,6 +52,7 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
     fun load(data: ByteArray, resources: Resources) {
         var apkFile: File? = null
         var extractionDir: File? = null
+        var attachedLoader: ResourcesLoader? = null
         var loaded = false
         try {
 
@@ -132,7 +133,7 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
                 .listFiles { f -> f.name == "AndroidManifest.xml" }
                 ?.firstOrNull()
 
-            resources.addLoaders(ResourcesLoader().apply {
+            attachedLoader = ResourcesLoader().apply {
                 addProvider(buildResourceProvider(apkFile))
                 addProvider(buildResourceProviderFromDir(extractedApkDirectory))
                 // Config splits (e.g. split_config.xxxhdpi.apk) carry density/language/ABI-
@@ -143,7 +144,8 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
                     addProvider(buildResourceProvider(splitApk))
                     addProvider(buildResourceProviderFromDir(outputDir))
                 }
-            })
+            }
+            resources.addLoaders(attachedLoader)
 
             manifestReader = manifestFile?.let { AndroidManifestReader(it.parentFile!!, FileInputStream(it), resources) }
 
@@ -157,13 +159,23 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             }
             loaded = true
 
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             // A failed load, above all a hostile archive (zip-slip): don't leave its half-extracted,
-            // attacker-controlled files in the cache. `loader` was never built, so nothing can
-            // class-load from them, and FileTrackingClassLoader.addApkFile never registers an APK
-            // whose load() threw. Not just SecurityException: newer Android's ZipFile rejects a
-            // traversal entry itself (ZipException) while it is being opened, after the extraction
-            // dir already exists, so every failure has to clean up.
+            // attacker-controlled files in the cache, nor anything that still points at them.
+            // Not just SecurityException: newer Android's ZipFile rejects a traversal entry itself
+            // (ZipException) while it is being opened, after the extraction dir already exists, and
+            // later steps can fail too (a corrupt manifest, an Error such as LinkageError or OOM
+            // during dex/extraction), so every failure has to clean up. Steps run in order and a
+            // later one can fail after an earlier one took effect:
+            //  - the resources loader may already be attached to the host's Resources, with
+            //    providers backed by files deleted below: detach it;
+            //  - the class loader may already be built: drop it, so this LoadedApk is unusable
+            //    (FileTrackingClassLoader.addApkFile never registers an APK whose load() threw).
+            attachedLoader?.let { runCatching { resources.removeLoaders(it) } }
+            loader = null
+            resourcesProvider = null
+            manifestReader = null
+            paths = null
             extractionDir?.deleteRecursively()
             throw e
         } finally {
