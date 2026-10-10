@@ -26,7 +26,7 @@ import java.io.InputStream
 class AndroidManifestReader(private val baseDir: File, private val inputStream: InputStream, private val resources: Resources) {
     private val document = CompressedXmlParser().parseDOM(inputStream)
     private var applicationInfo: ApplicationInfo? = null
-    private var services: List<ServiceInfo>? = null
+    private var services: List<Pair<ServiceInfo, List<IntentFilter>>>? = null
     private var providers: List<ProviderInfo>? = null
     private var activities: List<Pair<ActivityInfo, List<IntentFilter>>>? = null
     private var receivers: List<Pair<ActivityInfo, List<IntentFilter>>>? = null
@@ -45,6 +45,7 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
         for (i in 0 until activities.length) {
             val info = ActivityInfo()
             info.applicationInfo = appInfo
+            info.packageName = appInfo.packageName
 
             val node = activities.item(i)
             for (j in 0 until node.attributes.length) {
@@ -70,8 +71,9 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
         val filters = mutableListOf<IntentFilter>()
         for (filterNode in getChildrenByTagName(node, "intent-filter")) {
             val filter = IntentFilter()
-            filterNode.attributes.getNamedItem("android:priority")?.nodeValue?.toIntOrNull()?.let {
-                filter.priority = it
+            // may be negative, which the binary-XML parser can render as 0x-prefixed two's complement
+            filterNode.attributes.getNamedItem("android:priority")?.nodeValue?.let { parseIntAttr(it) }?.let {
+                filter.priority = it.toInt()
             }
 
             for (actionNode in getChildrenByTagName(filterNode, "action")) {
@@ -102,7 +104,11 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
         return filters.toList()
     }
 
-    /** <receiver> elements, with their intent filters. */
+    /**
+     * <receiver> elements, with their intent filters. `exported` is false unless declared, whereas
+     * the platform (before API 31) treats a component with an intent filter as exported; it does
+     * not affect resolution here.
+     */
     fun parseReceivers(): List<Pair<ActivityInfo, List<IntentFilter>>> {
         receivers?.let { return it }
 
@@ -131,14 +137,6 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
 
     fun getReceiverInfo(componentName: ComponentName): ActivityInfo? =
         parseReceivers().find { it.first.name == componentName.className }?.first
-
-    /** <service> elements, with their intent filters. */
-    fun parseServices(): List<Pair<ServiceInfo, List<IntentFilter>>> {
-        val appNode = document.getElementsByTagName("application").item(0)
-        val nodes = getChildrenByTagName(appNode, "service")
-        val infos = getServices()
-        return infos.zip(nodes).map { (info, node) -> info to parseIntentFilters(node) }
-    }
 
     /** `android:versionName` from the manifest root, if declared. */
     fun getVersionName(): String? = manifestAttr("versionName")
@@ -373,6 +371,7 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
         for (node in providers) {
             val info = ProviderInfo()
             info.applicationInfo = appInfo
+            info.packageName = appInfo.packageName
 
             for (j in 0 until node.attributes.length) {
                 val attr = node.attributes.item(j)
@@ -382,6 +381,8 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
                     info.grantUriPermissions = attr.nodeValue.toBoolean()
                 } else if (attr.localName == "authorities") {
                     info.authority = attr.nodeValue
+                } else if (attr.localName == "enabled") {
+                    info.enabled = attr.nodeValue != "false"
                 }
             }
 
@@ -392,22 +393,19 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
         return result.toList()
     }
 
-    fun getServices(): List<ServiceInfo> {
-        if (services != null) {
-            return services!!
-        }
+    fun getServices(): List<ServiceInfo> = parseServices().map { it.first }
 
-        val result = mutableListOf<ServiceInfo>()
+    /** <service> elements, with their intent filters, parsed together in one pass. */
+    fun parseServices(): List<Pair<ServiceInfo, List<IntentFilter>>> {
+        services?.let { return it }
+
         val appInfo = getApplicationInfo()
+        val appNode = document.getElementsByTagName("application").item(0)
 
-        val appNode = document.getElementsByTagName("application")
-            .item(0)
-
-        val providers = getChildrenByTagName(appNode, "service")
-
-        for (node in providers) {
+        val result = getChildrenByTagName(appNode, "service").map { node ->
             val info = ServiceInfo()
             info.applicationInfo = appInfo
+            info.packageName = appInfo.packageName
 
             for (j in 0 until node.attributes.length) {
                 val attr = node.attributes.item(j)
@@ -415,15 +413,15 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
                     info.name = attr.nodeValue
                 } else if (attr.localName == "exported") {
                     info.exported = attr.nodeValue.toBoolean()
+                } else if (attr.localName == "enabled") {
+                    info.enabled = attr.nodeValue != "false"
                 }
             }
 
             info.metaData = parseMetaData(node)
-
-            result.add(info)
+            info to parseIntentFilters(node)
         }
-
-        this.services = result.toList()
-        return result.toList()
+        services = result
+        return result
     }
 }

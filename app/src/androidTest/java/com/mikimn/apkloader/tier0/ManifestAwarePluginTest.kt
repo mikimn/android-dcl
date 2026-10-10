@@ -158,6 +158,25 @@ class ManifestAwarePluginTest {
         assertThat(plugin.queryIntentServices(Intent("fx.action.PING"), 0)).isEmpty()
     }
 
+    // ComponentName(info.packageName, info.name) is the standard way to address a result.
+    @Test fun everyResolvedComponentCarriesItsPackageName() {
+        val service = plugin.queryIntentServices(Intent("fx.action.SERVE"), 0).single().serviceInfo
+        assertThat(ComponentName(service.packageName, service.name)).isEqualTo(ComponentName(pkg, "$pkg.ExportedService"))
+        val receiver = plugin.queryBroadcastReceivers(Intent("fx.action.PING"), 0).single().activityInfo
+        assertThat(receiver.packageName).isEqualTo(pkg)
+        val activity = plugin.queryIntentActivities(Intent("fx.action.VIEW_ME"), 0).single().activityInfo
+        assertThat(activity.packageName).isEqualTo(pkg)
+        assertThat(plugin.getProviderInfo(ComponentName(pkg, "$pkg.FxProvider"), 0).packageName).isEqualTo(pkg)
+        assertThat(plugin.getServiceInfo(ComponentName(pkg, "$pkg.PrivateService"), 0).packageName).isEqualTo(pkg)
+        assertThat(plugin.getServiceInfo(ComponentName(pkg, "$pkg.PrivateService"), 0).enabled).isTrue()
+    }
+
+    @Test fun filterPriorityMayBeNegative() {
+        assertThat(plugin.queryIntentServices(Intent("fx.action.SERVE"), 0).single().priority).isEqualTo(-5)
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("https://fx.example.com/items/1"), "text/plain")
+        assertThat(plugin.queryIntentActivities(view, 0).single().priority).isEqualTo(5)
+    }
+
     @Test fun launchIntentForPackage() {
         val intent = plugin.getLaunchIntentForPackage(pkg)!!
         assertThat(intent.action).isEqualTo(Intent.ACTION_MAIN)

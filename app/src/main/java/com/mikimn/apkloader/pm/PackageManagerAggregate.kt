@@ -154,7 +154,6 @@ class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManage
     // --- intent queries: plugin answers first, then whatever the real PackageManager knows ---
 
     private fun queryWithPlugins(
-        flags: Int,
         fromPlugin: (PackageManagerPlugin) -> List<ResolveInfo>?,
         fromBase: () -> List<ResolveInfo>
     ): MutableList<ResolveInfo> {
@@ -165,13 +164,13 @@ class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManage
     }
 
     override fun queryIntentActivities(p0: Intent, p1: Int): MutableList<ResolveInfo> =
-        queryWithPlugins(p1, { it.queryIntentActivities(p0, p1) }, { super.queryIntentActivities(p0, p1) })
+        queryWithPlugins({ it.queryIntentActivities(p0, p1) }, { super.queryIntentActivities(p0, p1) })
 
     override fun queryIntentServices(p0: Intent, p1: Int): MutableList<ResolveInfo> =
-        queryWithPlugins(p1, { it.queryIntentServices(p0, p1) }, { super.queryIntentServices(p0, p1) })
+        queryWithPlugins({ it.queryIntentServices(p0, p1) }, { super.queryIntentServices(p0, p1) })
 
     override fun queryBroadcastReceivers(p0: Intent, p1: Int): MutableList<ResolveInfo> =
-        queryWithPlugins(p1, { it.queryBroadcastReceivers(p0, p1) }, { super.queryBroadcastReceivers(p0, p1) })
+        queryWithPlugins({ it.queryBroadcastReceivers(p0, p1) }, { super.queryBroadcastReceivers(p0, p1) })
 
     override fun resolveService(p0: Intent, p1: Int): ResolveInfo? =
         queryIntentServices(p0, p1).firstOrNull()

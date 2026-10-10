@@ -69,7 +69,7 @@
         </activity-alias>
 
         <service android:name=".ExportedService" android:exported="true">
-            <intent-filter>
+            <intent-filter android:priority="-5">
                 <action android:name="fx.action.SERVE" />
             </intent-filter>
             <meta-data android:name="svc.key" android:value="svc-value" />
