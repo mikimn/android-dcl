@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
@@ -50,6 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: lint-and-test
+    # APK + email only for changes that land on master, not for PRs.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     env:
       SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
     steps:
@@ -74,11 +76,8 @@ jobs:
           if-no-files-found: error
 
       - name: Email install link
-        # Secrets are unavailable to fork PRs and to Dependabot; skip rather than fail.
-        if: >-
-          env.SMTP_SERVER != '' &&
-          (github.event_name != 'pull_request' ||
-           github.event.pull_request.head.repo.full_name == github.repository)
+        # Skip (rather than fail) when SMTP isn't configured.
+        if: env.SMTP_SERVER != ''
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: ${{ secrets.SMTP_SERVER }}
@@ -87,12 +86,12 @@ jobs:
           username: ${{ secrets.SMTP_USERNAME }}
           password: ${{ secrets.SMTP_PASSWORD }}
           to: ${{ secrets.CI_EMAIL_TO }}
-          from: ApkLoader CI <${{ secrets.SMTP_USERNAME }}>
-          subject: "ApkLoader test build #${{ github.run_number }} (${{ github.head_ref || github.ref_name }})"
+          from: ApkLoader CI <${{ secrets.CI_EMAIL_FROM || 'onboarding@resend.dev' }}>
+          subject: "ApkLoader test build #${{ github.run_number }} (${{ github.ref_name }})"
           html_body: |
             <p>A new test build of <b>ApkLoader</b> is ready.</p>
             <ul>
-              <li>Ref: <code>${{ github.head_ref || github.ref_name }}</code> @ <code>${{ github.sha }}</code></li>
+              <li>Ref: <code>${{ github.ref_name }}</code> @ <code>${{ github.sha }}</code></li>
               <li>Event: ${{ github.event_name }}</li>
             </ul>
             <p><a href="${{ steps.upload.outputs.artifact-url }}">Download the APK (zip)</a>
