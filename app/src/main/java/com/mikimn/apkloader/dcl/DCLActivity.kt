@@ -7,6 +7,7 @@ import android.app.Instrumentation
 import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
@@ -59,8 +60,11 @@ class DCLActivity : ComponentActivity() {
          * guard is bypassed and it tries to re-add the already-attached decor view, crashing
          * with "View ... has already been added to the window manager".
          */
+        // mBase (ContextWrapper): the shadow Activity's base is the loaded package's own
+        // DCLContext (per-package storage); copying it onto the host would hand the host's
+        // activity that context too.
         private val LIFECYCLE_COPY_FILTER = Predicate<Pair<java.lang.reflect.Field, Any?>> {
-            it.first.name != "mWindowAdded"
+            it.first.name != "mWindowAdded" && it.first.name != "mBase"
         }
         const val KEY_ACTIVITY_CLASS = "activityClassName"
         const val KEY_APK_ASSET_FILE_NAME = "apkAssetFileName"
@@ -146,6 +150,12 @@ class DCLActivity : ComponentActivity() {
         val manifestReader = loadedApk.manifestReader
         val appInfo = manifestReader?.getApplicationInfo()
 
+        // The loaded app's own Context: same host services, but private storage under
+        // virtual/<package>/ instead of the host's (shared by every loaded app otherwise).
+        val shadowContext: Context = appInfo?.packageName?.let { pkg ->
+            DCLContext((baseContext as? ContextWrapper)?.baseContext ?: baseContext, virtualPackage = pkg)
+        } ?: baseContext
+
         val activityClassName = intent.getStringExtra(KEY_ACTIVITY_CLASS)
             ?: manifestReader?.getLauncherActivity()?.name
 
@@ -176,7 +186,7 @@ class DCLActivity : ComponentActivity() {
 
                 // TODO(@mikimn): Remove, replace with general provider resolver
                 if (!providerInfo.name.contains("MlKitInitProvider")) {
-                    provider.attachInfo(baseContext, providerInfo)
+                    provider.attachInfo(shadowContext, providerInfo)
                     // Should not be called, because attachInfo already does that
                     //  https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/content/ContentProvider.java;l=2649;drc=61197364367c9e404c7da6900658f1b16c42d0da
                     // provider.onCreate()
@@ -201,7 +211,7 @@ class DCLActivity : ComponentActivity() {
         val isNewShadowApp = loadedApk.shadowApplication == null
         val shadowApp = applicationClassName?.let {
             loadedApk.shadowApplication
-                ?: ShadowApplication.createShadowApplication(loader, it, application, baseContext)
+                ?: ShadowApplication.createShadowApplication(loader, it, application, shadowContext)
                     .also { created -> loadedApk.shadowApplication = created }
         }
 
@@ -248,7 +258,7 @@ class DCLActivity : ComponentActivity() {
                 // The saved state may hold the loaded app's own Parcelables (view/fragment state),
                 // which a Bundle can only unparcel with the APK's classloader, not the host's.
                 loadedApk.loader?.let { savedInstanceState?.classLoader = it }
-                initShadowActivity(shadowActivity!!, shadowApp, newActivityInfo, savedInstanceState)
+                initShadowActivity(shadowActivity!!, shadowApp, shadowContext, newActivityInfo, savedInstanceState)
 
                 isWaitingOnHandler = false;
             }
@@ -282,10 +292,11 @@ class DCLActivity : ComponentActivity() {
     private fun initShadowActivity(
         activity: Activity,
         shadowApp: Application?,
+        shadowContext: Context,
         newActivityInfo: ActivityInfo,
         savedInstanceState: Bundle?
     ) {
-        ShadowActivity.attachActivity(newActivityInfo, this, activity, shadowApp)
+        ShadowActivity.attachActivity(newActivityInfo, this, activity, shadowApp, shadowContext)
 
         if (newActivityInfo.themeResource != 0) {
             activity.setTheme(newActivityInfo.themeResource)

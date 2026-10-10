@@ -20,8 +20,11 @@ import java.io.File
  * different `filesDir`, so a probe built from it would never see the fixture's events. Use [clear] in `@Before`; each test runs in a fresh process under
  * the orchestrator, so this is only needed when a test reuses a channel across phases.
  */
-class ProbeChannel(context: Context, val name: String) {
-    private val file = File(File(context.filesDir, DIR), "$name.log")
+class ProbeChannel(context: Context, val name: String, loadedPackage: String? = null) {
+    // A fixture running through DCLActivity gets per-package storage (docs/TESTING.md, "Per-package
+    // storage"): its filesDir is <host dataDir>/virtual/<package>/files. Pass [loadedPackage] to
+    // read what such a fixture wrote; leave it null for code running with the host's own context.
+    private val file = File(File(filesDirOf(context, loadedPackage), DIR), "$name.log")
 
     /** All events recorded so far, in order. Empty if the fixture hasn't written anything. */
     fun events(): List<String> =
@@ -61,5 +64,9 @@ class ProbeChannel(context: Context, val name: String) {
 
     companion object {
         const val DIR = "probe"
+
+        private fun filesDirOf(context: Context, loadedPackage: String?): File =
+            if (loadedPackage == null) context.filesDir
+            else File(File(File(context.dataDir, "virtual"), loadedPackage), "files")
     }
 }
