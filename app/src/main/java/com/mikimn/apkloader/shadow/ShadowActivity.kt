@@ -2,13 +2,33 @@ package com.mikimn.apkloader.shadow
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Build
+import com.mikimn.apkloader.dcl.DCLActivity
 import com.mikimn.apkloader.reflection.findMethodByName
 import com.mikimn.apkloader.reflection.tryGetValue
 
 object ShadowActivity {
+    /**
+     * The `Intent` a hosted activity sees from `getIntent()`: a copy of what actually launched the
+     * host (extras, action, data, type, flags), pointed at the shadow class, minus the extras the
+     * loader itself uses to route the launch. Without this the shadow got a bare
+     * `Intent(context, class)` and could not read anything its launcher passed.
+     * [hostIntent] is not modified.
+     */
+    fun shadowIntent(
+        hostIntent: Intent?,
+        context: Context,
+        activityClass: Class<*>,
+        hostOnlyExtras: Collection<String>
+    ): Intent = Intent(hostIntent ?: Intent()).apply {
+        component = ComponentName(context, activityClass)
+        hostOnlyExtras.forEach { removeExtra(it) }
+    }
+
     fun attachActivity(
         aInfo: ActivityInfo,
         realActivity: Activity,
@@ -43,7 +63,7 @@ object ShadowActivity {
             realActivity.tryGetValue("mToken"),
             realActivity.tryGetValue("mIdent"),
             application ?: realActivity.application,
-            Intent(realActivity.baseContext, activityClass),
+            shadowIntent(realActivity.intent, realActivity.baseContext, activityClass, DCLActivity.HOST_ONLY_EXTRAS),
             aInfo,
             null,
             realActivity.parent,

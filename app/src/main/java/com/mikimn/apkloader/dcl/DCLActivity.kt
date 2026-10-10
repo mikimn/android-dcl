@@ -67,6 +67,9 @@ class DCLActivity : ComponentActivity() {
         /** Set by [ActivityTaskManagerHook] when it retargets an intent to a proxy pool slot. */
         const val KEY_LOADED_APK_NAME = "loadedApkName"
 
+        /** Extras the loader adds for its own routing; never shown to the hosted activity's `getIntent()`. */
+        val HOST_ONLY_EXTRAS = listOf(KEY_ACTIVITY_CLASS, KEY_APK_ASSET_FILE_NAME, KEY_LOADED_APK_NAME)
+
         /**
          * Launches [apkPath] - a bundled asset name or an absolute on-device APK path (e.g. an
          * installed app's `publicSourceDir`) - through DCLActivity. The target activity is
