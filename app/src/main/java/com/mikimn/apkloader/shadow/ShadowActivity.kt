@@ -2,6 +2,7 @@ package com.mikimn.apkloader.shadow
 
 import android.app.Activity
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Build
@@ -13,7 +14,8 @@ object ShadowActivity {
         aInfo: ActivityInfo,
         realActivity: Activity,
         activity: Activity,
-        application: Application? = null
+        application: Application? = null,
+        baseContext: Context = realActivity.baseContext
     ) {
         // final void android.app.Activity.attach(
         //      android.content.Context,
@@ -37,13 +39,13 @@ object ShadowActivity {
         val activityClass = activity.javaClass
 
         val parameters = mutableListOf(
-            realActivity.baseContext,
+            baseContext,
             realActivity.tryGetValue("mMainThread"),
             realActivity.tryGetValue("mInstrumentation"),
             realActivity.tryGetValue("mToken"),
             realActivity.tryGetValue("mIdent"),
             application ?: realActivity.application,
-            Intent(realActivity.baseContext, activityClass),
+            Intent(baseContext, activityClass),
             aInfo,
             null,
             realActivity.parent,

@@ -96,9 +96,21 @@ test's loaded APK can never leak into the next. Consequences:
   reads only this process's own log (by pid and start time) and does not use `UiAutomation`, which
   races between orchestrator-spawned processes ("UiAutomationService already registered").
 - Always build a `ProbeChannel` from the **target** (host app) context: the protocol depends on the
-  host's `filesDir`, which is where loaded fixtures write.
+  host's data dir. A fixture launched through `DCLActivity` writes under its own per-package storage
+  (see below), so pass `loadedPackage` to read it; code using the host's own context (providers
+  attached by a test, `FixtureLoader`) still writes to the host's `filesDir`.
 
 `TestInfrastructureTest` tests these helpers themselves.
+
+## Per-package storage
+
+Every loaded APK shares the host's uid and data dir, so the loader gives the shadow Application,
+shadow Activity and the loaded app's providers a `DCLContext` bound to the loaded package
+(`virtualPackage`). Its private-storage APIs (`getFilesDir`, `getCacheDir`, `getDir`, `openFile*`,
+databases, `getExternalFilesDir`, ...) resolve to `<hostDataDir>/virtual/<package>/...`
+(`VirtualDataDirs`); SharedPreferences are isolated by a name prefix instead of a path. The host's
+own contexts are untouched. JVM tests: `VirtualDataDirsTest`, `DCLContextStorageTest`; on-device:
+`DCLContextStorageOnDeviceTest`.
 
 ## Two copies of host classes (gotcha)
 
