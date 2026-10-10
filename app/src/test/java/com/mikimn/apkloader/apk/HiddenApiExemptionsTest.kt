@@ -73,4 +73,28 @@ class HiddenApiExemptionsTest {
             HiddenApiExemptions.dexTypes("not a dex file, just text".toByteArray())
         }
     }
+
+    // The dex is untrusted: whatever it references, nothing AOSP-owned can ever be exempted.
+    @Test fun noPlatformPrefixIsEverExemptedOrEvenLookedUp() {
+        for (prefix in HiddenApiExemptions.PLATFORM_PREFIXES.filter { it.endsWith("/") }) {
+            val lookups = mutableListOf<String>()
+            val result = HiddenApiExemptions.vendorExemptions(listOf("L${prefix}vendor/pkg/Foo;")) { lookups.add(it); true }
+            assertThat(result).isEmpty()
+            assertThat(lookups).isEmpty()
+        }
+    }
+
+    @Test fun aPackageOfTheAppsOwnClassesStopsCostingLookupsAfterAFewMisses() {
+        val lookups = mutableListOf<String>()
+        val own = (1..50).map { "Lcom/example/app/ui/Screen$it;" }
+        val result = HiddenApiExemptions.vendorExemptions(own) { lookups.add(it); false }
+        assertThat(result).isEmpty()
+        assertThat(lookups.size).isAtMost(3)
+    }
+
+    @Test fun theNegativeCacheIsPerPackageSoAVendorPackageElsewhereIsStillFound() {
+        val own = (1..10).map { "Lcom/example/app/Own$it;" }
+        val result = HiddenApiExemptions.vendorExemptions(own + "Lcom/vendor/inner/Wrapper;") { it == "com.vendor.inner.Wrapper" }
+        assertThat(result).containsExactly("Lcom/vendor/")
+    }
 }
