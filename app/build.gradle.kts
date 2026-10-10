@@ -87,3 +87,26 @@ dependencies {
 //     implementation(libs.coroutines)
 //     implementation(libs.coroutinesAndroid)
 }
+// ---- Fixture APKs -> androidTest assets ------------------------------------------------------
+// Each fixture module is built as a normal debug APK and copied to assets/fixtures/<name>.apk of
+// the androidTest source set, where FixtureApks picks it up.
+// Derived from the :fixtures subprojects declared in settings.gradle.kts, so the two cannot drift.
+val fixtureNames = rootProject.subprojects
+    .filter { it.path.startsWith(":fixtures:") }
+    .map { it.name }
+    .sorted()
+val fixtureAssetsDir = layout.buildDirectory.dir("generated/fixtures")
+
+val syncFixtureApks = tasks.register<Sync>("syncFixtureApks") {
+    into(fixtureAssetsDir.map { it.dir("fixtures") })
+    fixtureNames.forEach { name ->
+        val fixture = project(":fixtures:$name")
+        dependsOn(fixture.tasks.matching { it.name == "assembleDebug" })
+        from(fixture.layout.buildDirectory.file("outputs/apk/debug/$name-debug.apk")) {
+            rename { "$name.apk" }
+        }
+    }
+}
+
+android.sourceSets.getByName("androidTest").assets.srcDir(fixtureAssetsDir)
+tasks.matching { it.name.endsWith("AndroidTestAssets") }.configureEach { dependsOn(syncFixtureApks) }

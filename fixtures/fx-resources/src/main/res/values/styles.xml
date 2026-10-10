@@ -1,0 +1,5 @@
+<resources>
+    <style name="FxTheme" parent="@android:style/Theme.DeviceDefault">
+        <item name="android:colorBackground">@color/accent</item>
+    </style>
+</resources>

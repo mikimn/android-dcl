@@ -20,6 +20,29 @@ layer over real third-party APKs.
   -Pandroid.testInstrumentationRunnerArguments.class=com.mikimn.apkloader.HostAppSmokeTest
 ```
 
+## Fixture APKs
+
+Fixtures are tiny, dependency-free apps (framework classes only, Java) under `fixtures/<name>/`,
+each isolating one loader capability. Gradle builds them as ordinary debug APKs and `app`'s
+`syncFixtureApks` task copies them to `assets/fixtures/<name>.apk` of the androidTest source set.
+They keep the default resource package id `0x7f`, which must coexist with the host's `0x8f`.
+
+| Fixture | Tier | Isolates |
+| --- | --- | --- |
+| `fx-hello` | 0/1 | One activity, no custom resources; lifecycle + `getPackageName()` + class loader reported |
+| `fx-resources` | 1 | Layout, string/plural (+ night variant), color, dimen, drawable, raw, asset, custom theme |
+| `fx-application` | 1 | Custom `Application`; `app.onCreate` must run exactly once (throws on a 2nd instance) |
+
+Fixtures report what they saw through `fixtures/common`'s `Probe` (file under the shared
+`filesDir`; the test reads it with `ProbeChannel`). To add a fixture: create `fixtures/<name>`
+(copy an existing `build.gradle.kts`, use a unique `com.mikimn.fixture.*` namespace), then add it
+to `settings.gradle.kts` (the app module picks fixtures up from the `:fixtures:*` subprojects
+automatically), and add a row to `FixtureApksTest`. Note `Probe` is compiled into every fixture; only one loaded APK is active at
+a time, so the duplicate class names don't clash.
+
+`FixtureApksTest` validates fixtures with the framework parser, independent of the loader, so a
+later failure can be attributed to the fixture or to the loader.
+
 ## Process isolation
 
 The loader keeps process-global state (`DCLContext` statics, patched `ActivityThread` fields,
