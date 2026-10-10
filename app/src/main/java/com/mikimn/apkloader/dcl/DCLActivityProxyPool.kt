@@ -1,6 +1,7 @@
 package com.mikimn.apkloader.dcl
 
 import android.content.pm.ActivityInfo
+import android.util.Log
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -58,6 +59,11 @@ object DCLActivityProxyPool {
 
     private val nextSlot = ConcurrentHashMap<Pool, AtomicInteger>()
     private val assigned = ConcurrentHashMap<Pair<Pool, String>, Int>()
+    /** Classes that didn't fit their launch-mode pool and live in the standard pool instead. */
+    private val overflowed = ConcurrentHashMap.newKeySet<Pair<Pool, String>>()
+
+    /** Where exhaustion warnings go; tests swap it (android.util.Log isn't available on the JVM). */
+    @Volatile var warn: (String) -> Unit = { Log.w("DCLProxyPool", it) }
 
     /** Which pool a loaded activity with these manifest attributes belongs to. */
     fun poolFor(launchMode: Int, configChanges: Int): Pool {
@@ -76,11 +82,31 @@ object DCLActivityProxyPool {
      * The proxy slot for [targetClassName]. The same class always gets the same slot (within its
      * pool), which is what lets the system apply singleTop/singleTask/singleInstance and
      * FLAG_ACTIVITY_CLEAR_TOP / SINGLE_TOP against the real target.
+     *
+     * Slots are finite. A class that doesn't fit in a full launch-mode pool is **not** squeezed onto
+     * another class's slot (the system would then deliver its intent to that class's instance); it
+     * falls back to the `standard` pool of the same config handling and loses its launch-mode
+     * semantics, with a warning. Only a full `standard` pool wraps and shares slots, which is
+     * harmless for standard mode apart from clear-top matching.
      */
     fun classNameFor(targetClassName: String, launchMode: Int, configChanges: Int): String {
-        val pool = poolFor(launchMode, configChanges)
+        var pool = poolFor(launchMode, configChanges)
+        val key = pool to targetClassName
+        if (pool.kind != Kind.STANDARD && !assigned.containsKey(key) &&
+            (key in overflowed || nextSlot[pool]?.get().let { it != null && it >= pool.slots })
+        ) {
+            if (overflowed.add(key)) {
+                warn(
+                    "${pool.kind} pool (config=${pool.handlesConfigChanges}) is full; $targetClassName falls " +
+                        "back to a standard slot and loses its launch mode"
+                )
+            }
+            pool = Pool(Kind.STANDARD, pool.handlesConfigChanges)
+        }
         val slot = assigned.getOrPut(pool to targetClassName) {
-            nextSlot.getOrPut(pool) { AtomicInteger(0) }.getAndIncrement().mod(pool.slots)
+            val n = nextSlot.getOrPut(pool) { AtomicInteger(0) }.getAndIncrement()
+            if (n == pool.slots) warn("${pool.kind} pool is full; further classes will share slots")
+            n.mod(pool.slots)
         }
         return pool.className(slot)
     }
@@ -90,5 +116,22 @@ object DCLActivityProxyPool {
      * include a change the loaded app did not declare in its own `configChanges`, meaning the
      * real system would have recreated it.
      */
-    fun needsRecreate(changedBits: Int, appHandledBits: Int): Boolean = changedBits and appHandledBits.inv() != 0
+    fun needsRecreate(changedBits: Int, appHandledBits: Int): Boolean =
+        changedBits and appHandledBits.inv() and DECLARABLE_CONFIG_CHANGES != 0
+
+    /**
+     * Config bits an app can declare in `configChanges`. `CONFIG_ASSETS_PATHS` and
+     * `CONFIG_WINDOW_CONFIGURATION` (hidden) are reported by `Configuration.diff` but never cause a
+     * relaunch.
+     */
+    private const val DECLARABLE_CONFIG_CHANGES = 0x7fffffff and 0x20000000.inv()
+
+    /**
+     * The config changes the real system would treat as handled by an app: what it declares, plus -
+     * for `targetSdkVersion < 26` - `screenLayout` and `smallestScreenSize` (`ActivityInfo.getRealConfigChanged`).
+     * An absent `targetSdkVersion` (0) means "legacy", as on the platform.
+     */
+    fun appHandledConfigChanges(declared: Int, targetSdkVersion: Int): Int =
+        if (targetSdkVersion < 26) declared or ActivityInfo.CONFIG_SCREEN_LAYOUT or ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE
+        else declared
 }

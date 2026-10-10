@@ -488,7 +488,9 @@ class DCLActivity : ComponentActivity() {
     private var lastConfiguration: Configuration? = null
 
     private fun applyActivityAttributes(info: ActivityInfo) {
-        hostedConfigChanges = info.configChanges
+        hostedConfigChanges = DCLActivityProxyPool.appHandledConfigChanges(
+            info.configChanges, info.applicationInfo?.targetSdkVersion ?: 0
+        )
         lastConfiguration = Configuration(resources.configuration)
 
         if (info.screenOrientation != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
@@ -497,6 +499,8 @@ class DCLActivity : ComponentActivity() {
         if (info.softInputMode != 0) {
             window.setSoftInputMode(info.softInputMode)
         }
+        // Applies to the whole task, which matches the case that matters: a root activity that
+        // asks to stay out of Recents.
         if (info.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0) {
             getSystemService(ActivityManager::class.java).appTasks
                 .firstOrNull { it.taskInfo.taskId == taskId }

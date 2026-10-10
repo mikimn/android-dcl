@@ -242,6 +242,14 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
 
         aInfo.metaData = parseMetaData(node)
 
+        // <uses-sdk>: targetSdkVersion decides platform behaviors the proxy host has to mimic (see
+        // DCLActivityProxyPool.appHandledConfigChanges). Absent means "minSdk", i.e. a legacy app.
+        document.getElementsByTagName("uses-sdk").item(0)?.let { sdk ->
+            fun sdkAttr(name: String) = sdk.attributes.getNamedItem("android:$name")?.nodeValue?.let { parseNumber(it) }
+            aInfo.minSdkVersion = sdkAttr("minSdkVersion") ?: aInfo.minSdkVersion
+            aInfo.targetSdkVersion = sdkAttr("targetSdkVersion") ?: aInfo.minSdkVersion
+        }
+
         // Cache
         applicationInfo = aInfo
         return aInfo
@@ -259,12 +267,16 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
             "screenOrientation" -> info.screenOrientation = parseEnum(value, SCREEN_ORIENTATIONS) ?: info.screenOrientation
             "windowSoftInputMode" -> info.softInputMode = parseFlags(value, SOFT_INPUT_MODES) ?: info.softInputMode
             "excludeFromRecents" ->
-                if (value.toBoolean()) info.flags = info.flags or ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS
+                if (parseBool(value)) info.flags = info.flags or ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS
             "taskAffinity" -> info.taskAffinity = value
-            "exported" -> info.exported = value.toBoolean()
+            "exported" -> info.exported = parseBool(value)
             "enabled" -> info.enabled = value != "false"
         }
     }
+
+    /** `true`, but also the integer forms a binary manifest can carry (`0xffffffff`, `-1`, `1`). */
+    private fun parseBool(value: String): Boolean =
+        value.toBoolean() || (parseNumber(value)?.let { it != 0 } ?: false)
 
     private fun parseNumber(value: String): Int? =
         if (value.startsWith("0x")) value.substring(2).toLongOrNull(16)?.toInt() else value.toIntOrNull()
