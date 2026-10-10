@@ -18,6 +18,10 @@ android {
         multiDexEnabled = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Each instrumented test gets a fresh process (via Android Test Orchestrator): the loader
+        // keeps process-global state (DCLContext statics, patched ActivityThread fields, the ATM
+        // hook), so tests must not observe each other's loaded APKs.
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
     }
 
     androidResources {
@@ -44,6 +48,9 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
+    }
 }
 
 dependencies {
@@ -57,7 +64,15 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     testImplementation(libs.junit)
+    testImplementation(libs.truth)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.ext.truth)
+    androidTestImplementation(libs.truth)
+    androidTestImplementation(libs.androidx.uiautomator)
+    androidTestImplementation(libs.androidx.espresso.intents)
+    androidTestUtil(libs.androidx.test.orchestrator)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
