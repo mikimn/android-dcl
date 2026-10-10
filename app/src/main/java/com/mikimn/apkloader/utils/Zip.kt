@@ -8,6 +8,31 @@ import java.util.zip.ZipInputStream
 
 object Zip {
     /**
+     * Resolves a zip entry name against [outputDir], refusing names that escape it ("zip-slip":
+     * `../../x`). Names like `a/../b` that stay inside are fine and are normalized.
+     *
+     * A name that resolves to [outputDir] *itself* is only acceptable for a directory entry
+     * (`a/../`, harmless). For a file entry (`a/..`, `.`) it would make [unzip] delete the output
+     * directory and write a file in its place, so it is rejected too.
+     *
+     * @throws SecurityException if the resolved path is outside [outputDir], or is [outputDir]
+     * itself for a file entry. Deliberately not swallowed by [unzip]'s generic error handling: a
+     * hostile archive must fail loudly instead of loading half-extracted.
+     */
+    private fun resolveEntry(outputDir: File, entryName: String, isDirectory: Boolean): File {
+        val target = File(outputDir, entryName)
+        val root = outputDir.canonicalPath
+        val resolved = target.canonicalPath
+        val inside = resolved.startsWith(root + File.separator)
+        val isRoot = resolved == root
+        if (!inside && !(isRoot && isDirectory)) {
+            throw SecurityException("Zip entry escapes the output directory: $entryName")
+        }
+        // Hand back the normalized path: `out/a/../b.txt` can't be opened when `a` doesn't exist.
+        return File(resolved)
+    }
+
+    /**
      * Extract a zip file into any directory
      *
      * @param zipFile src zip file
@@ -32,10 +57,10 @@ object Zip {
             while (zipEntry != null) {
                 val entry = zipEntry
                 if (entry.isDirectory) {
-                    val d = File(outputDir, entry.name)
+                    val d = resolveEntry(outputDir, entry.name, entry.isDirectory)
                     if (!d.exists()) d.mkdirs()
                 } else {
-                    val f = File(outputDir, entry.name)
+                    val f = resolveEntry(outputDir, entry.name, entry.isDirectory)
                     if (f.parentFile?.exists() != true) f.parentFile?.mkdirs()
 
                     f.delete()
@@ -52,6 +77,8 @@ object Zip {
             }
 
             outputDir
+        } catch (e: SecurityException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -65,10 +92,10 @@ object Zip {
 
             for (zipEntry in zipFile.stream()) {
                 if (zipEntry.isDirectory) {
-                    val d = File(outputDir, zipEntry.name)
+                    val d = resolveEntry(outputDir, zipEntry.name, zipEntry.isDirectory)
                     if (!d.exists()) d.mkdirs()
                 } else {
-                    val f = File(outputDir, zipEntry.name)
+                    val f = resolveEntry(outputDir, zipEntry.name, zipEntry.isDirectory)
                     if (f.parentFile?.exists() != true) f.parentFile?.mkdirs()
 
                     f.delete()
@@ -83,6 +110,8 @@ object Zip {
             }
 
             outputDir
+        } catch (e: SecurityException) {
+            throw e
         } catch (e: Exception) {
             e.printStackTrace()
             null

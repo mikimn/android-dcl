@@ -42,6 +42,7 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
     // TODO support load from assets
     fun load(data: ByteArray, resources: Resources) {
         var tempFile: File? = null
+        var extractionDir: File? = null
         try {
             tempFile = File.createTempFile("temp", ".apk")
             tempFile.writeBytes(data)
@@ -71,6 +72,7 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             // stale files from an older version of the APK lying around.
             extractedApkDirectory.deleteRecursively()
             extractedApkDirectory.mkdirs()
+            extractionDir = extractedApkDirectory
 
             // Zip.unzip(ZipInputStream(tempFile.inputStream()), extractedApkDirectory)
             Zip.unzip(ZipFile(tempFile), extractedApkDirectory)
@@ -126,6 +128,12 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
 
             manifestReader = manifestFile?.let { AndroidManifestReader(it.parentFile!!, FileInputStream(it), resources) }
 
+        } catch (e: SecurityException) {
+            // A hostile archive (zip-slip): don't leave its half-extracted, attacker-controlled
+            // files in the cache. `loader` was never built, so nothing can class-load from them,
+            // and FileTrackingClassLoader.addApkFile never registers an APK whose load() threw.
+            extractionDir?.deleteRecursively()
+            throw e
         } finally {
             tempFile?.delete()
         }

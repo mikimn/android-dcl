@@ -43,8 +43,8 @@ listed in `app/src/test/resources/package-manager-wrapper-known-gaps.txt`; the t
 *new* gap and on any listed method that has since been fixed, so the list can only shrink.
 
 **Known bugs as `@Ignore`d tests.** A test that encodes the desired behavior of a known bug is kept
-`@Ignore`d with the reason (e.g. `ZipTest.rejectsEntriesEscapingOutputDir`, zip-slip); remove the
-`@Ignore` in the PR that fixes it.
+`@Ignore`d with the reason; remove the `@Ignore` in the PR that fixes it (the zip-slip test
+followed this path).
 
 ## Fixture APKs
 
