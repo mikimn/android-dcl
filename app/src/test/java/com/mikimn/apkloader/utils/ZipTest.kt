@@ -1,6 +1,7 @@
 package com.mikimn.apkloader.utils
 
 import com.google.common.truth.Truth.assertThat
+import org.junit.Assert.assertThrows
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -87,13 +88,63 @@ class ZipTest {
         Zip.unzip(corrupt, out())
     }
 
-    // zip-slip: an entry named "../x" must never be written outside the output dir.
-    // KNOWN BUG: neither overload sanitizes entry names. See PR description.
-    @org.junit.Ignore("known bug: Zip.unzip is vulnerable to zip-slip; remove @Ignore when fixed")
-    @Test fun rejectsEntriesEscapingOutputDir() {
+    // zip-slip: an entry that resolves outside the output dir must never be written, and
+    // extraction must fail loudly (not return a half-extracted dir).
+    private fun assertSlipRejected(entryName: String, viaStream: Boolean = false) {
         val parent = tmp.newFolder()
         val out = File(parent, "out").apply { mkdirs() }
-        Zip.unzip(zipFile("../evil.txt" to "pwned"), out)
-        assertThat(File(parent, "evil.txt").exists()).isFalse()
+        val data = zipOf(entryName to "pwned")
+        assertThrows(SecurityException::class.java) {
+            if (viaStream) Zip.unzip(ZipInputStream(ByteArrayInputStream(data)), out)
+            else Zip.unzip(ZipFile(tmp.newFile().apply { writeBytes(data) }), out)
+        }
+        assertThat(parent.walkTopDown().filter { it.isFile && it.name == "evil.txt" }.toList()).isEmpty()
+    }
+
+    @Test fun rejectsParentTraversalEntry() = assertSlipRejected("../evil.txt")
+    @Test fun rejectsDeepParentTraversalEntry() = assertSlipRejected("a/b/../../../evil.txt")
+    @Test fun rejectsTraversalEntryDirectoryToo() = assertSlipRejected("../evil-dir/")
+    @Test fun rejectsParentTraversalViaStreamOverload() = assertSlipRejected("../evil.txt", viaStream = true)
+
+    @Test fun allowsDotDotThatStaysInsideOutputDir() {
+        val out = out()
+        Zip.unzip(zipFile("a/../b.txt" to "B"), out)
+        assertThat(File(out, "b.txt").readText()).isEqualTo("B")
+    }
+
+    @Test fun siblingDirWithCommonPrefixIsNotInside() {
+        // "/tmp/out" must not be treated as containing "/tmp/out-evil/x".
+        val parent = tmp.newFolder()
+        val out = File(parent, "out").apply { mkdirs() }
+        assertThrows(SecurityException::class.java) {
+            Zip.unzip(zipFile("../out-evil/x.txt" to "x"), out)
+        }
+        assertThat(File(parent, "out-evil").exists()).isFalse()
+    }
+
+    // A *file* entry that resolves to the output directory itself ("a/..", ".") must not make
+    // extraction delete the directory and write a file in its place (review finding on the fix).
+    private fun assertRootEntryRejected(entryName: String, viaStream: Boolean) {
+        val out = tmp.newFolder()
+        File(out, "keep.txt").writeText("keep")
+        val data = zipOf(entryName to "pwned")
+        assertThrows(SecurityException::class.java) {
+            if (viaStream) Zip.unzip(ZipInputStream(ByteArrayInputStream(data)), out)
+            else Zip.unzip(ZipFile(tmp.newFile().apply { writeBytes(data) }), out)
+        }
+        assertThat(out.isDirectory).isTrue()
+        assertThat(File(out, "keep.txt").readText()).isEqualTo("keep")
+    }
+
+    @Test fun rejectsFileEntryResolvingToOutputDir() = assertRootEntryRejected("a/..", viaStream = false)
+    @Test fun rejectsDotFileEntryResolvingToOutputDir() = assertRootEntryRejected(".", viaStream = false)
+    @Test fun rejectsFileEntryResolvingToOutputDirViaStream() = assertRootEntryRejected("a/..", viaStream = true)
+
+    @Test fun directoryEntryResolvingToOutputDirIsHarmless() {
+        val out = tmp.newFolder()
+        File(out, "keep.txt").writeText("keep")
+        Zip.unzip(zipFile("a/../" to null, "b.txt" to "B"), out)
+        assertThat(File(out, "keep.txt").readText()).isEqualTo("keep")
+        assertThat(File(out, "b.txt").readText()).isEqualTo("B")
     }
 }

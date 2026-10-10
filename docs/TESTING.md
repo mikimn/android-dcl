@@ -45,8 +45,8 @@ fixed, so the list can only shrink. When bumping `compileSdk`, new `PackageManag
 up here as failures.
 
 **Known bugs as `@Ignore`d tests.** A test that encodes the desired behavior of a known bug is kept
-`@Ignore`d with the reason (e.g. `ZipTest.rejectsEntriesEscapingOutputDir`, zip-slip); remove the
-`@Ignore` in the PR that fixes it.
+`@Ignore`d with the reason; remove the `@Ignore` in the PR that fixes it (the zip-slip test
+followed this path).
 
 ## Fixture APKs
 
@@ -59,6 +59,7 @@ They keep the default resource package id `0x7f`, which must coexist with the ho
 | --- | --- | --- |
 | `fx-hello` | 0/1 | One activity, no custom resources; lifecycle + `getPackageName()` + class loader reported |
 | `fx-resources` | 1 | Layout, string/plural (+ night variant), color, dimen, drawable, raw, asset, custom theme |
+| `fx-manifest` | 0 | Manifest-reader surface: app/component meta-data (literal + resource refs), alias-only launcher + disabled decoy alias, services, provider, receiver |
 | `fx-application` | 1 | Custom `Application`; `app.onCreate` must run exactly once (throws on a 2nd instance) |
 
 Fixtures report what they saw through `fixtures/common`'s `Probe` (file under the shared

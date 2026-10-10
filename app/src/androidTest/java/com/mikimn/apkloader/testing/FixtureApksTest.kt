@@ -21,6 +21,7 @@ class FixtureApksTest {
         Expected("fx-hello.apk", "com.mikimn.fixture.hello", "com.mikimn.fixture.hello.HelloActivity"),
         Expected("fx-resources.apk", "com.mikimn.fixture.resources", "com.mikimn.fixture.resources.ResourcesActivity"),
         Expected("fx-application.apk", "com.mikimn.fixture.application", "com.mikimn.fixture.application.AppActivity"),
+        Expected("fx-manifest.apk", "com.mikimn.fixture.manifest", "com.mikimn.fixture.manifest.MainActivity"),
     )
 
     @Test fun allFixturesArePackaged() {
