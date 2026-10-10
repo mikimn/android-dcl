@@ -9,8 +9,20 @@ import java.io.File
  *
  * Layout: `<hostDataDir>/virtual/<package>/{files,cache,code_cache,no_backup,databases,app_<name>}`.
  * Pure path logic; [DCLContext] applies it.
+ *
+ * This isolates loaded apps from each other **by accident** (shared `files/`, colliding database or
+ * DataStore names). It is not a security boundary: loaded code runs in the host's process under the
+ * host's uid and can still open any path in the host's data dir. What it does guard is the path
+ * building itself: the package name comes from an untrusted manifest and every name an app passes
+ * is validated, so these paths can't be steered outside `virtual/<package>/`.
  */
 class VirtualDataDirs(hostDataDir: File, val packageName: String) {
+    init {
+        // The manifest is untrusted (see the zip-slip fix): `..`, `/` or an empty segment in a
+        // package name would resolve outside virtual/. Fail loudly rather than sanitize.
+        require(PACKAGE_NAME.matches(packageName)) { "Not a valid package name: '$packageName'" }
+    }
+
     val dataDir = File(File(hostDataDir, "virtual"), packageName)
     val files = File(dataDir, "files")
     val cache = File(dataDir, "cache")
@@ -18,8 +30,8 @@ class VirtualDataDirs(hostDataDir: File, val packageName: String) {
     val noBackup = File(dataDir, "no_backup")
     val databases = File(dataDir, "databases")
 
-    /** `getDir(name)`: `app_<name>`, like the platform. */
-    fun dir(name: String) = File(dataDir, "app_$name")
+    /** `getDir(name)`: `app_<name>`, like the platform; the name must be flat. */
+    fun dir(name: String) = File(dataDir, "app_${flatName(name)}")
 
     /** A plain file name under [files]; like the platform, path separators are not allowed. */
     fun file(name: String): File = File(files, flatName(name))
@@ -40,7 +52,17 @@ class VirtualDataDirs(hostDataDir: File, val packageName: String) {
     /** An external-storage directory under [externalBase], e.g. the host's `getExternalFilesDir`. */
     fun external(externalBase: File, type: String? = null): File {
         val root = File(File(externalBase, "virtual"), packageName)
-        return if (type.isNullOrEmpty()) root else File(root, type)
+        if (type.isNullOrEmpty()) return root
+        // Environment.DIRECTORY_* style names; nested ("a/b") is fine, escaping is not.
+        require(!type.startsWith(File.separator) && type.split(File.separatorChar).none { it == ".." }) {
+            "Directory type '$type' must stay inside the app's external directory"
+        }
+        return File(root, type)
+    }
+
+    private companion object {
+        // Java package-name syntax: dot-separated identifiers, each starting with a letter/underscore.
+        val PACKAGE_NAME = Regex("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*")
     }
 
     private fun flatName(name: String): String {

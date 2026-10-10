@@ -144,7 +144,9 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   shadow Application/Activity and loaded providers get a `DCLContext(virtualPackage = ...)` whose
   storage APIs resolve to `<hostDataDir>/virtual/<package>/` (`VirtualDataDirs`; SharedPreferences by
   name prefix). Don't pass the host's own context to loaded code, and keep `mBase` out of any
-  `FieldMapper.copy` between host and shadow objects. Apps hardcoding `/data/data/<pkg>` still miss.
+  `FieldMapper.copy` between host and shadow objects. Apps hardcoding `/data/data/<pkg>` still miss. This isolates loaded apps from each other by
+  accident; it is not a security boundary (same uid, same process), but package names and file/dir
+  names are validated so paths can't be steered outside `virtual/<package>/`.
 
 ## Roadmap
 

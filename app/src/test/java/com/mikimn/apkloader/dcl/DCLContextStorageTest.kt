@@ -106,4 +106,11 @@ class DCLContextStorageTest {
         assertThat(a.applicationInfo).isSameInstanceAs(a.applicationInfo)
         assertThat(host.applicationInfo.dataDir).isNotEqualTo(a.dataDir.path)
     }
+
+    @Test fun hostileNamesFromLoadedCodeAreRejectedAtTheContext() {
+        assertThrows(IllegalArgumentException::class.java) { a.getDir("../../x", 0) }
+        assertThrows(IllegalArgumentException::class.java) { a.getExternalFilesDir("../../x") }
+        assertThrows(IllegalArgumentException::class.java) { a.getDatabasePath("../x.db") }
+        assertThrows(IllegalArgumentException::class.java) { forPackage("../evil").filesDir }
+    }
 }

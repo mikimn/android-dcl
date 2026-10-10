@@ -51,4 +51,31 @@ class VirtualDataDirsTest {
         assertThat(dirs.external(ext, "Pictures")).isEqualTo(File(ext, "virtual/com.example.app/Pictures"))
         assertThat(dirs.external(ext, "")).isEqualTo(dirs.external(ext))
     }
+
+    // The package name comes from an untrusted manifest.
+    @Test fun packageNamesThatCouldEscapeVirtualAreRejected() {
+        for (bad in listOf("", "..", "../evil", "a/b", "a\\b", ".a", "a.", "a..b", "1abc", "a b", "a/../b", "/abs")) {
+            assertThrows("'$bad'", IllegalArgumentException::class.java) { VirtualDataDirs(host, bad) }
+        }
+    }
+
+    @Test fun ordinaryPackageNamesAreAccepted() {
+        for (ok in listOf("a", "com.example.app", "com.oneplus.note", "org.foo_bar.Baz2", "_x.y")) {
+            assertThat(VirtualDataDirs(host, ok).dataDir).isEqualTo(File(host, "virtual/$ok"))
+        }
+    }
+
+    @Test fun getDirNamesMustBeFlat() {
+        assertThat(dirs.dir("ok")).isEqualTo(File(dirs.dataDir, "app_ok"))
+        assertThrows(IllegalArgumentException::class.java) { dirs.dir("../../x") }
+        assertThrows(IllegalArgumentException::class.java) { dirs.dir("a/b") }
+    }
+
+    @Test fun externalTypesCannotEscape() {
+        val ext = File("/sdcard/Android/data/host/files")
+        assertThat(dirs.external(ext, "a/b")).isEqualTo(File(ext, "virtual/com.example.app/a/b"))
+        assertThrows(IllegalArgumentException::class.java) { dirs.external(ext, "../../x") }
+        assertThrows(IllegalArgumentException::class.java) { dirs.external(ext, "a/../../x") }
+        assertThrows(IllegalArgumentException::class.java) { dirs.external(ext, "/etc") }
+    }
 }
