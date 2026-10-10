@@ -74,8 +74,14 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             val cacheDirName = "cache-" + name.replace(File.separatorChar, '_')
             val cacheRoot = File(System.getProperty("java.io.tmpdir")!!)
             // Kept on disk for the life of the process (it used to be a deleted temp file): the
-            // class loader reads dex from it, and loaded code can reopen it by path.
-            apkFile = persistApk(data, File(cacheRoot, "$cacheDirName.apk"))
+            // class loader reads dex from it, and loaded code can reopen it by path. It is a copy
+            // rather than the original path (even when `name` is a readable installed APK) because
+            // ART writes the compiled .odex/.vdex next to the dex file it loads, which needs a
+            // directory we own, and because the original can be replaced by an app update while a
+            // loader is still reading it. Each load gets its own file (see persistApk), so a
+            // failed reload never takes away the file an earlier LoadedApk of the same name uses.
+            sweepStaleApkCopies(cacheRoot)
+            apkFile = persistApk(data, File(cacheRoot, "$cacheDirName.${generation.incrementAndGet()}.apk"))
             var extractedApkDirectory = File(cacheRoot, cacheDirName)
             // Clear any previous extraction for this name first: a re-test of the same
             // `name` (e.g. a bundled sample rebuilt with different content) must not leave
@@ -110,6 +116,9 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
                 baseClassLoader
             )
 
+            // This exists only so META-INF/ resources (e.g. ServiceLoader files) resolve from the
+            // extracted directory; classes themselves come from the APK file. Don't drop one half
+            // thinking it is redundant with the other.
             // TODO Move inside buildClassLoader
             // Should fix `Module with the Main dispatcher is missing. Add dependency providing the Main dispatcher, e.g. 'kotlinx-coroutines-android ...`
             //    This is because of the way ServiceLoaded uses Class.classLoader explicitly, which is provided when the class is first initiated, and the
@@ -162,9 +171,9 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
     }
 
     /**
-     * Writes [data] to [target] read-only and atomically replaces any previous copy: an earlier
-     * LoadedApk for the same name (same process) may still have its class loader reading the old
-     * file, which stays valid because it is replaced by rename, never rewritten in place.
+     * Writes [data] to [target], read-only. It goes to a `.part` file first and is renamed into
+     * place, so a half-written APK never exists under its final name. [target] is unique per load
+     * (see [generation]), so nothing ever replaces a file an earlier loader may be reading.
      */
     private fun persistApk(data: ByteArray, target: File): File {
         val part = File.createTempFile(target.name, ".part", target.parentFile)
@@ -236,5 +245,27 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
 
     fun loadClass(name: String): Class<*> {
         return loader?.loadClass(name) ?: throw IllegalStateException("Call load(ByteArray) before using LoadedApk")
+    }
+
+    private companion object {
+        private const val TAG = "LoadedApk"
+
+        /** Makes every persisted APK copy of this process unique; see persistApk. */
+        val generation = java.util.concurrent.atomic.AtomicInteger(0)
+        private val swept = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /**
+         * Once per process, before this process writes any copy: deletes the `cache-*.apk` copies
+         * (and interrupted `.part` files) left by earlier processes. Directories of the same name
+         * pattern are the extraction dirs and are not touched.
+         */
+        fun sweepStaleApkCopies(cacheRoot: File) {
+            if (!swept.compareAndSet(false, true)) return
+            cacheRoot.listFiles { f ->
+                f.isFile && f.name.startsWith("cache-") && (f.name.endsWith(".apk") || f.name.endsWith(".part"))
+            }?.forEach {
+                if (it.delete()) Log.d(TAG, "Removed stale ${it.name}")
+            }
+        }
     }
 }
