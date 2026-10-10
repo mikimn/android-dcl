@@ -7,6 +7,7 @@ import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.os.StrictMode.VmPolicy
 import android.util.Log
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 class DCLApplication : Application() {
     override fun onCreate() {
@@ -17,6 +18,12 @@ class DCLApplication : Application() {
                 permitUnsafeIntentLaunch()
             }
         }.build())
+
+        // permitNonSdkApiUsage() above only silences StrictMode's *detection*; it does not lift the
+        // runtime's hidden-API enforcement. Loaded apps' own bytecode (e.g. a vendor app linking
+        // against OEM framework wrapper jars on the boot classpath) hits that enforcement as a plain
+        // NoSuchFieldError/NoSuchMethodError, which reflection-site fixes can't reach.
+        HiddenApiBypass.addHiddenApiExemptions("Lcom/oneplus/", "Lnet/oneplus/")
 
         installUnavoidablePermissionDenialGuard()
 

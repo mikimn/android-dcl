@@ -11,17 +11,34 @@ import android.util.Log
 import com.mikimn.apkloader.MyContextWrapper
 import com.mikimn.apkloader.plugins.DefaultPluginProvider
 import com.mikimn.apkloader.plugins.ContextPluginProvider
+import com.mikimn.apkloader.pm.PackageManagerAggregate
 
 class DCLContext(base: Context, private val pluginProvider: ContextPluginProvider = DefaultPluginProvider()) : ContextWrapper(base) {
     companion object {
         private var shadowPackageName: String? = null
         var shadowApp: Application? = null
+
+        // Process-lifetime state, deliberately not an instance: PackageManagerAggregate is a
+        // process-wide singleton, so a resolver that captured a DCLContext (which wraps an
+        // Activity/Application base) would keep every context it was last handed alive.
+        @Volatile private var trackingLoader: FileTrackingClassLoader? = null
+
+        /** The loaded package's name if (and only if) the real caller is that APK's own code. */
+        fun loadedPackageForCaller(): String? {
+            val shadow = shadowPackageName ?: return null
+            val loader = trackingLoader ?: return null
+            val callerClassName = CallerClassResolver.findRealCallerClassName() ?: return null
+            return if (loader.ownerOf(callerClassName) != null) shadow else null
+        }
     }
 
     override fun getPackageManager(): PackageManager {
         Log.e("DCLContext", "INVOKE getPackageManager")
         val base = super.getPackageManager()
-        return pluginProvider.providePackageManager(base)
+        (classLoader as? FileTrackingClassLoader)?.let { trackingLoader = it }
+        return pluginProvider.providePackageManager(base).also {
+            (it as? PackageManagerAggregate)?.ownUidPackageResolver = Companion::loadedPackageForCaller
+        }
     }
 
     override fun startService(service: Intent?): ComponentName? {
@@ -33,10 +50,8 @@ class DCLContext(base: Context, private val pluginProvider: ContextPluginProvide
     // returning the host's actual, installed identity and break if lied to unconditionally.
     // See docs/apk-test-log.md's "Meme Generator" research notes for how this was derived.
     override fun getPackageName(): String {
-        val shadow = shadowPackageName ?: return super.getPackageName()
-        val loader = classLoader as? FileTrackingClassLoader ?: return super.getPackageName()
-        val callerClassName = CallerClassResolver.findRealCallerClassName() ?: return super.getPackageName()
-        return if (loader.ownerOf(callerClassName) != null) shadow else super.getPackageName()
+        (classLoader as? FileTrackingClassLoader)?.let { trackingLoader = it }
+        return loadedPackageForCaller() ?: super.getPackageName()
     }
 
     private var cachedResources: Resources? = null
