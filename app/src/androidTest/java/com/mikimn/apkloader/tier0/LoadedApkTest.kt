@@ -195,12 +195,15 @@ class LoadedApkTest {
 
     @Test fun apkWithPathTraversalEntryFailsLoudlyAndWritesNothingOutside() {
         val evil = zipWithEntry("../../escaped.txt")
-        // The traversal is resolved against the per-APK cache dir, so "../.." is the directory
-        // *above* java.io.tmpdir. Positive control: that directory is writable by this app, so
-        // without the fix the file really would have been created there (the check is not vacuous).
+        // The traversal is resolved against the per-APK cache dir (<tmpdir>/cache-evil.apk), so
+        // "../../escaped.txt" lands in the directory *above* java.io.tmpdir. Built lexically
+        // because the cache dir does not exist yet (the OS can't resolve ".." through it).
+        // Positive control: that directory is writable by this app, so without the fix the file
+        // really would have been created there (the check is not vacuous).
         val cache = cacheDir("evil.apk")
-        val escapeTarget = File(cache, "../../escaped.txt")
-        assertThat(File(cache, "../..").canWrite()).isTrue()
+        val escapeDir = cache.absoluteFile.parentFile!!.parentFile!!
+        val escapeTarget = File(escapeDir, "escaped.txt")
+        assertThat(escapeDir.canWrite()).isTrue()
         escapeTarget.delete()
 
         assertThrows(SecurityException::class.java) {
