@@ -15,7 +15,7 @@ signing (documented for completeness; likely won't fix).
 | R5 | #17 | 2 | [Complete PackageManager answers for loaded packages](#r5) | partial: receivers, version/permissions, intent queries done; signatures and `getInstallSourceInfo` open |
 | R6 | #18 | 2 | [Per-package data directory isolation](#r6) | done |
 | R7 | #19 | 2 | [Point ApplicationInfo paths at the loaded APK and use a file-backed dex loader](#r7) | partial: file-backed loader + `ApplicationInfo` paths done; `Context.getPackageCodePath()` now unblocked by the per-package context (#18) |
-| R8 | #20 | 2 | [Honor launchMode, flags and per-activity attributes in proxy activities](#r8) | open |
+| R8 | #20 | 2 | [Honor launchMode, flags and per-activity attributes in proxy activities](#r8) | partial: launchMode pools, configChanges, orientation, softInputMode, excludeFromRecents done; taskAffinity, documentLaunchMode, resizeableActivity open |
 | R9 | #21 | 2 | [Fix ContentProvider initialization order and context](#r9) | open |
 | R10 | #22 | 2 | [Support multiple loaded APKs concurrently](#r10) | open |
 | R11 | #23 | 3 | [Services: in-process Service lifecycle via a proxy service pool](#r11) | open |

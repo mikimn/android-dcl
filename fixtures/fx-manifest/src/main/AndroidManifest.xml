@@ -33,7 +33,15 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".SecondActivity" android:exported="false" />
+        <activity
+            android:name=".SecondActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="stateHidden|adjustResize"
+            android:excludeFromRecents="true"
+            android:taskAffinity=".second" />
 
         <!-- Data filter, for intent resolution tests. -->
         <activity android:name=".ViewActivity" android:exported="true">
