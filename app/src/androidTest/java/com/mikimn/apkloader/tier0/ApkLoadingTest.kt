@@ -77,7 +77,8 @@ class ApkLoadingTest {
 
         val activityLikeResources = context.createConfigurationContext(android.content.res.Configuration()).resources
         assertThat(activityLikeResources).isNotSameInstanceAs(context.resources)
-        assertThat(activityLikeResources.getIdentifier("title", "string", pkg)).isEqualTo(0) // not attached yet
+        // (A Resources derived from the application's may already see the APK, since loaders attached
+        // by LoadedApk.load are shared; attaching the process-wide loader is what makes it certain.)
         activityLikeResources.addLoaders(loader.resourcesLoader) // what DCLActivity.initResourceLoader does
         val id = activityLikeResources.getIdentifier("title", "string", pkg)
         assertThat(id).isNotEqualTo(0)
