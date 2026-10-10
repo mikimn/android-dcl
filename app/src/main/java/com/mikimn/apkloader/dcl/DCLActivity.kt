@@ -276,23 +276,8 @@ class DCLActivity : ComponentActivity() {
     }
 
     /** Reads [apkName] (an absolute device path, else an asset name) and loads it. */
-    private fun loadApk(loader: FileTrackingClassLoader, apkName: String): LoadedApk {
-        val reader = AssetReader(this)
-        val apkFile = File(apkName)
-
-        val apkData = if (apkFile.exists()) {
-            FileInputStream(apkFile).use { reader.readStream(it) }
-        } else {
-            reader.readFile(apkName)
-        }
-
-        val loadedApk = loader.addApkFile(apkName, apkData, resources)
-
-        (packageManager as? PackageManagerAggregate)
-            ?.addPlugin(ManifestAwarePlugin(loadedApk.manifestReader!!))
-
-        return loadedApk
-    }
+    private fun loadApk(loader: FileTrackingClassLoader, apkName: String): LoadedApk =
+        ApkLoading.load(this, loader, apkName)
 
     private fun initShadowActivity(
         activity: Activity,

@@ -38,6 +38,8 @@ Real-APK test results, and the root-cause write-ups behind most fixes, are recor
 
 1. `AndroidManifest.xml` declares `android:appComponentFactory=".dcl.DCLAppComponentFactory"`,
    so the framework routes *every* component instantiation for this process through it.
+   `instantiateActivity` also preloads the APK named by the intent (`ApkLoading.preload`) so a hosted
+   activity restored into a fresh process can unmarshal its saved state before `onCreate` runs.
 2. [`DCLAppComponentFactory`](app/src/main/java/com/mikimn/apkloader/dcl/DCLAppComponentFactory.kt)
    (`CoreComponentFactory` subclass) installs a `FileTrackingClassLoader` at
    `instantiateClassLoader`, and in `instantiateActivity` redirects any activity class name it
