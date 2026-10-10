@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifest-rich fixture for AndroidManifestReader / ManifestAwarePlugin: every element the reader
+  parses, with known values. The launcher is reachable ONLY through an <activity-alias>, with a
+  disabled decoy alias that must be ignored.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:name=".ManifestApplication"
+        android:label="fx-manifest"
+        android:theme="@style/FxTheme"
+        android:allowBackup="false">
+
+        <meta-data android:name="fx.string" android:value="hello" />
+        <meta-data android:name="fx.int" android:value="42" />
+        <meta-data android:name="fx.long" android:value="5000000000" />
+        <meta-data android:name="fx.float" android:value="1.5" />
+        <meta-data android:name="fx.bool" android:value="true" />
+        <meta-data android:name="fx.ref.string" android:value="@string/meta_string" />
+        <meta-data android:name="fx.ref.int" android:value="@integer/meta_int" />
+        <meta-data android:name="fx.ref.bool" android:value="@bool/meta_bool" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/FxTheme">
+            <intent-filter>
+                <action android:name="fx.action.VIEW_ME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name=".SecondActivity" android:exported="false" />
+
+        <activity-alias
+            android:name=".LauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".DisabledAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:targetActivity=".SecondActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <service android:name=".ExportedService" android:exported="true">
+            <meta-data android:name="svc.key" android:value="svc-value" />
+        </service>
+        <service android:name=".PrivateService" android:exported="false" />
+
+        <provider
+            android:name=".FxProvider"
+            android:authorities="com.mikimn.fixture.manifest.provider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <receiver android:name=".FxReceiver" android:exported="false" />
+    </application>
+</manifest>
