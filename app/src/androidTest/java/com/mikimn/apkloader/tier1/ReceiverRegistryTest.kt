@@ -32,4 +32,17 @@ class ReceiverRegistryTest {
     @Test fun anApkWithoutReceiverFiltersRegistersNothing() {
         assertThat(ReceiverRegistry.register(target, fx.load("fx-resources.apk"))).isEqualTo(0)
     }
+
+    // Non-exported receivers are protected below API 33 by a permission only this app holds.
+    @Test fun theInternalBroadcastPermissionIsSignatureLevelAndHeldByTheHostOnly() {
+        val perm = ReceiverRegistry.internalBroadcastPermission(target)
+        val info = target.packageManager.getPermissionInfo(perm, 0)
+        assertThat(info.protectionLevel and android.content.pm.PermissionInfo.PROTECTION_MASK_BASE)
+            .isEqualTo(android.content.pm.PermissionInfo.PROTECTION_SIGNATURE)
+        // our own process passes the sender check (so the host's/loaded app's own broadcasts arrive)...
+        assertThat(target.checkSelfPermission(perm)).isEqualTo(android.content.pm.PackageManager.PERMISSION_GRANTED)
+        // ...while another app's (different signature) does not
+        assertThat(target.packageManager.checkPermission(perm, "com.android.settings"))
+            .isEqualTo(android.content.pm.PackageManager.PERMISSION_DENIED)
+    }
 }

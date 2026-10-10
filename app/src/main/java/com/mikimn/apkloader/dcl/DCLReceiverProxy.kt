@@ -44,7 +44,12 @@ class DCLReceiverProxy(private val receiverClass: String, private val apkName: S
                 if (pendingResult != null) setPendingResult(receiver, pendingResult)
 
                 // What the loaded receiver sees: its own component.
-                val delivered = Intent(intent).apply { component = ComponentName(pkg, className) }
+                val delivered = Intent(intent).apply {
+                    component = ComponentName(pkg, className)
+                    // ActivityManagerHook sent a copy restricted to the host for a setPackage(<loaded>)
+                    // broadcast; the receiver should see the package its sender asked for.
+                    if (`package` == app.packageName) setPackage(pkg)
+                }
                 receiver.onReceive(DCLContext.forLoadedApk(app, apk, pkg), delivered)
             } catch (e: Throwable) {
                 Log.e(TAG, "Loaded receiver $className failed for ${intent.action}", e)

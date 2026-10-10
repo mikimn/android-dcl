@@ -12,6 +12,7 @@ public class HelloReceiver extends BroadcastReceiver {
         Probe.log(context, "fx-hello", "receiver." + via);
         Probe.value(context, "fx-hello", "receiver.component." + via,
             intent.getComponent() == null ? null : intent.getComponent().getPackageName() + "/" + intent.getComponent().getClassName());
+        Probe.value(context, "fx-hello", "receiver.package." + via, intent.getPackage());
         Probe.value(context, "fx-hello", "receiver.routingExtras." + via, intent.hasExtra("dclReceiverClass") || intent.hasExtra("loadedApkName"));
         Probe.value(context, "fx-hello", "receiver.contextClass." + via, context.getClass().getName());
     }

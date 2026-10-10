@@ -859,6 +859,14 @@
     <uses-permission
         android:name="com.android.voicemail.permission.WRITE_VOICEMAIL" />
 
+    <!-- Required of senders to a loaded app's NON-exported receivers (ReceiverRegistry): below API 33 a
+         dynamic receiver is visible to every app, and this signature permission is held only by this app.
+         The system always passes the check, so system broadcasts still arrive. -->
+    <permission
+        android:name="${applicationId}.permission.INTERNAL_BROADCAST"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="${applicationId}.permission.INTERNAL_BROADCAST" />
+
     <application android:name=".dcl.DCLApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

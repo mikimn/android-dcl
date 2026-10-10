@@ -13,6 +13,9 @@ public class HelloActivity extends Activity {
 
     private android.content.ServiceConnection serviceConnection;
 
+    // The implicit broadcast below is the point (it exercises delivery by action to a non-exported
+    // receiver of a loaded app), so the lint check against it does not apply.
+    @android.annotation.SuppressLint("UnsafeImplicitIntentLaunch")
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Probe.log(this, CHANNEL, "onCreate");

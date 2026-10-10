@@ -40,11 +40,18 @@ class ReceiverRoutingTest {
         assertThat(route(Intent().setComponent(ComponentName(host, "$host.SomeHostReceiver")))).isEqualTo(Route.None)
     }
 
-    @Test fun implicitIntentRestrictedToALoadedPackageIsRestrictedToTheHostInstead() {
-        val intent = Intent("fx.PING").setPackage(loadedPkg)
-        assertThat(route(intent)).isEqualTo(Route.RestrictedToHost)
-        assertThat(intent.`package`).isEqualTo(host)
-        assertThat(intent.component).isNull()
+    @Test fun implicitIntentRestrictedToALoadedPackageGetsARestrictedCopyAndTheOriginalIsUntouched() {
+        val intent = Intent("fx.PING").setPackage(loadedPkg).putExtra("keep", 1)
+        val result = route(intent)
+
+        assertThat(result).isInstanceOf(Route.RestrictedToHost::class.java)
+        val copy = (result as Route.RestrictedToHost).intent
+        assertThat(copy.`package`).isEqualTo(host)
+        assertThat(copy.action).isEqualTo("fx.PING")
+        assertThat(copy.getIntExtra("keep", 0)).isEqualTo(1)
+        // sendBroadcast doesn't change the app's own Intent, so neither do we
+        assertThat(intent.`package`).isEqualTo(loadedPkg)
+        assertThat(copy).isNotSameInstanceAs(intent)
     }
 
     @Test fun otherImplicitIntentsAreLeftAlone() {
