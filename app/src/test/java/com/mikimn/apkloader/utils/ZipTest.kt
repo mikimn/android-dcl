@@ -121,4 +121,30 @@ class ZipTest {
         }
         assertThat(File(parent, "out-evil").exists()).isFalse()
     }
+
+    // A *file* entry that resolves to the output directory itself ("a/..", ".") must not make
+    // extraction delete the directory and write a file in its place (review finding on the fix).
+    private fun assertRootEntryRejected(entryName: String, viaStream: Boolean) {
+        val out = tmp.newFolder()
+        File(out, "keep.txt").writeText("keep")
+        val data = zipOf(entryName to "pwned")
+        assertThrows(SecurityException::class.java) {
+            if (viaStream) Zip.unzip(ZipInputStream(ByteArrayInputStream(data)), out)
+            else Zip.unzip(ZipFile(tmp.newFile().apply { writeBytes(data) }), out)
+        }
+        assertThat(out.isDirectory).isTrue()
+        assertThat(File(out, "keep.txt").readText()).isEqualTo("keep")
+    }
+
+    @Test fun rejectsFileEntryResolvingToOutputDir() = assertRootEntryRejected("a/..", viaStream = false)
+    @Test fun rejectsDotFileEntryResolvingToOutputDir() = assertRootEntryRejected(".", viaStream = false)
+    @Test fun rejectsFileEntryResolvingToOutputDirViaStream() = assertRootEntryRejected("a/..", viaStream = true)
+
+    @Test fun directoryEntryResolvingToOutputDirIsHarmless() {
+        val out = tmp.newFolder()
+        File(out, "keep.txt").writeText("keep")
+        Zip.unzip(zipFile("a/../" to null, "b.txt" to "B"), out)
+        assertThat(File(out, "keep.txt").readText()).isEqualTo("keep")
+        assertThat(File(out, "b.txt").readText()).isEqualTo("B")
+    }
 }

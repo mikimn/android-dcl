@@ -187,15 +187,60 @@ class LoadedApkTest {
 
     // ---- hostile input (zip-slip fix, end to end) -------------------------------------------
 
-    @Test fun apkWithPathTraversalEntryFailsLoudly() {
-        val evil = java.io.ByteArrayOutputStream().also { bytes ->
-            java.util.zip.ZipOutputStream(bytes).use { zip ->
-                zip.putNextEntry(java.util.zip.ZipEntry("../../escaped.txt")); zip.write(1); zip.closeEntry()
-            }
-        }.toByteArray()
+    private fun zipWithEntry(name: String): ByteArray = java.io.ByteArrayOutputStream().also { bytes ->
+        java.util.zip.ZipOutputStream(bytes).use { zip ->
+            zip.putNextEntry(java.util.zip.ZipEntry(name)); zip.write(1); zip.closeEntry()
+        }
+    }.toByteArray()
+
+    @Test fun apkWithPathTraversalEntryFailsLoudlyAndWritesNothingOutside() {
+        val evil = zipWithEntry("../../escaped.txt")
+        // The traversal is resolved against the per-APK cache dir, so "../.." is the directory
+        // *above* java.io.tmpdir. Positive control: that directory is writable by this app, so
+        // without the fix the file really would have been created there (the check is not vacuous).
+        val cache = cacheDir("evil.apk")
+        val escapeTarget = File(cache, "../../escaped.txt")
+        assertThat(File(cache, "../..").canWrite()).isTrue()
+        escapeTarget.delete()
+
         assertThrows(SecurityException::class.java) {
             fx.loadedApk("evil.apk").load(evil, fx.resources)
         }
-        assertThat(File(System.getProperty("java.io.tmpdir")!!, "../escaped.txt").exists()).isFalse()
+
+        val escaped = escapeTarget.exists()
+        escapeTarget.delete() // never leave it behind, even if the assertion below fails
+        assertThat(escaped).isFalse()
+    }
+
+    @Test fun hostileApkLeavesNoHalfExtractedCacheDir() {
+        assertThrows(SecurityException::class.java) {
+            fx.loadedApk("evil.apk").load(zipWithEntry("../../escaped.txt"), fx.resources)
+        }
+        assertThat(cacheDir("evil.apk").exists()).isFalse()
+    }
+
+    @Test fun fileEntryResolvingToTheExtractionDirIsRejectedAndCleanedUp() {
+        // "a/.." is a *file* entry that resolves to the extraction dir itself
+        assertThrows(SecurityException::class.java) {
+            fx.loadedApk("evil.apk").load(zipWithEntry("a/.."), fx.resources)
+        }
+        assertThat(cacheDir("evil.apk").exists()).isFalse()
+    }
+
+    @Test fun hostileApkIsNeverRegisteredWithTheClassLoader() {
+        assertThrows(SecurityException::class.java) {
+            fx.loader.addApkFile("evil.apk", zipWithEntry("../../escaped.txt"), fx.resources)
+        }
+        assertThat(fx.loader.apkFile("evil.apk")).isNull()
+        assertThat(fx.loader.last).isNull()
+        assertThat(fx.loader.ownerOf("com.example.Anything")).isNull()
+        assertThat(fx.loader.resourcesLoader.providers).isEmpty()
+    }
+
+    @Test fun failedLoadLeavesTheLoadedApkUnusable() {
+        val apk = fx.loadedApk("evil.apk")
+        assertThrows(SecurityException::class.java) { apk.load(zipWithEntry("../../escaped.txt"), fx.resources) }
+        assertThat(apk.loader).isNull()
+        assertThrows(IllegalStateException::class.java) { apk.loadClass("com.example.Anything") }
     }
 }

@@ -29,7 +29,14 @@ class FixtureLoader {
     fun loadFromPath(apk: File): LoadedApk =
         loader.addApkFile(apk.path, apk.readBytes(), resources)
 
-    /** A bare [LoadedApk] (no [FileTrackingClassLoader]) against the same base loader. */
+    /**
+     * A bare [LoadedApk] (no [FileTrackingClassLoader]) against the same base loader.
+     *
+     * The parent is deliberately `baseClassLoader.parent`, not the base itself: this is what
+     * [FileTrackingClassLoader.addApkFile] passes in production (where the base is the app's
+     * PathClassLoader and its parent is the boot loader), so the loaded code sees framework
+     * classes but not the host's or the test's. Passing the base would let loaded code see them.
+     */
     fun loadedApk(name: String): LoadedApk = LoadedApk(name, baseClassLoader.parent)
 
     fun id(pkg: String, type: String, name: String): Int = resources.getIdentifier(name, type, pkg)
