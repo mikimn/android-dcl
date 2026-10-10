@@ -1,0 +1,6 @@
+<resources>
+    <string name="meta_string">resolved-string</string>
+    <integer name="meta_int">7</integer>
+    <bool name="meta_bool">true</bool>
+    <style name="FxTheme" parent="@android:style/Theme.DeviceDefault" />
+</resources>

@@ -1,0 +1,6 @@
+# Concrete PackageManager methods that PackageManagerWrapper does not (yet) override.
+# Callers of these get the base-class stub (UnsupportedOperationException) instead of the real PM.
+# PackageManagerWrapperCompletenessTest fails if a method is missing and NOT listed here (new
+# regression) and also if a listed method is now overridden (delete it from this file).
+# Empty since all 52 gaps found at compileSdk 34 were fixed. See docs/TESTING.md.
+

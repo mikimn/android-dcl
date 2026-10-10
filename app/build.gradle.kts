@@ -18,6 +18,10 @@ android {
         multiDexEnabled = true
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Each instrumented test gets a fresh process (via Android Test Orchestrator): the loader
+        // keeps process-global state (DCLContext statics, patched ActivityThread fields, the ATM
+        // hook), so tests must not observe each other's loaded APKs.
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
     }
 
     androidResources {
@@ -44,6 +48,9 @@ android {
     buildFeatures {
         compose = true
     }
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
+    }
 }
 
 dependencies {
@@ -57,7 +64,17 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     testImplementation(libs.junit)
+    testImplementation(libs.truth)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.test.ext.truth)
+    androidTestImplementation(libs.truth)
+    androidTestImplementation(libs.androidx.uiautomator)
+    androidTestImplementation(libs.androidx.espresso.intents)
+    androidTestUtil(libs.androidx.test.orchestrator)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
@@ -72,3 +89,26 @@ dependencies {
 //     implementation(libs.coroutines)
 //     implementation(libs.coroutinesAndroid)
 }
+// ---- Fixture APKs -> androidTest assets ------------------------------------------------------
+// Each fixture module is built as a normal debug APK and copied to assets/fixtures/<name>.apk of
+// the androidTest source set, where FixtureApks picks it up.
+// Derived from the :fixtures subprojects declared in settings.gradle.kts, so the two cannot drift.
+val fixtureNames = rootProject.subprojects
+    .filter { it.path.startsWith(":fixtures:") }
+    .map { it.name }
+    .sorted()
+val fixtureAssetsDir = layout.buildDirectory.dir("generated/fixtures")
+
+val syncFixtureApks = tasks.register<Sync>("syncFixtureApks") {
+    into(fixtureAssetsDir.map { it.dir("fixtures") })
+    fixtureNames.forEach { name ->
+        val fixture = project(":fixtures:$name")
+        dependsOn(fixture.tasks.matching { it.name == "assembleDebug" })
+        from(fixture.layout.buildDirectory.file("outputs/apk/debug/$name-debug.apk")) {
+            rename { "$name.apk" }
+        }
+    }
+}
+
+android.sourceSets.getByName("androidTest").assets.srcDir(fixtureAssetsDir)
+tasks.matching { it.name.endsWith("AndroidTestAssets") }.configureEach { dependsOn(syncFixtureApks) }
