@@ -1,6 +1,13 @@
 package com.mikimn.apkloader.pm
 
 import android.content.ComponentName
+import android.content.IntentSender
+import android.content.pm.ModuleInfo
+import android.content.res.Configuration
+import android.os.Bundle
+import java.security.cert.Certificate
+import java.util.concurrent.Executor
+import java.util.function.Consumer
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
@@ -636,5 +643,300 @@ open class PackageManagerWrapper(private val basePM: PackageManager) : PackageMa
     ): MutableList<ResolveInfo> {
         logCurrentMethod()
         return basePM.queryIntentActivityOptions(caller, specifics, intent, flags)
+    }
+
+    // ---- Overrides added so no concrete PackageManager method falls through to the base-class
+    // ---- "not implemented" stub (enforced by PackageManagerWrapperCompletenessTest).
+
+    @RequiresApi(33)
+    override fun getLaunchIntentSenderForPackage(p0: String): IntentSender {
+        logCurrentMethod()
+        return basePM.getLaunchIntentSenderForPackage(p0)
+    }
+
+    @RequiresApi(33)
+    override fun getPackageGids(p0: String, p1: PackageInfoFlags): IntArray? {
+        logCurrentMethod()
+        return basePM.getPackageGids(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun getPackageUid(p0: String, p1: PackageInfoFlags): Int {
+        logCurrentMethod()
+        return basePM.getPackageUid(p0, p1)
+    }
+
+    @RequiresApi(31)
+    override fun getPlatformPermissionsForGroup(p0: String, p1: Executor, p2: Consumer<MutableList<String>>) {
+        logCurrentMethod()
+        basePM.getPlatformPermissionsForGroup(p0, p1, p2)
+    }
+
+    @RequiresApi(31)
+    override fun getGroupOfPlatformPermission(p0: String, p1: Executor, p2: Consumer<String>) {
+        logCurrentMethod()
+        basePM.getGroupOfPlatformPermission(p0, p1, p2)
+    }
+
+    @RequiresApi(33)
+    override fun getApplicationInfo(p0: String, p1: ApplicationInfoFlags): ApplicationInfo {
+        logCurrentMethod()
+        return basePM.getApplicationInfo(p0, p1)
+    }
+
+    @RequiresApi(31)
+    override fun getTargetSdkVersion(p0: String): Int {
+        logCurrentMethod()
+        return basePM.getTargetSdkVersion(p0)
+    }
+
+    @RequiresApi(33)
+    override fun getActivityInfo(p0: ComponentName, p1: ComponentInfoFlags): ActivityInfo {
+        logCurrentMethod()
+        return basePM.getActivityInfo(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun getServiceInfo(p0: ComponentName, p1: ComponentInfoFlags): ServiceInfo {
+        logCurrentMethod()
+        return basePM.getServiceInfo(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun getProviderInfo(p0: ComponentName, p1: ComponentInfoFlags): ProviderInfo {
+        logCurrentMethod()
+        return basePM.getProviderInfo(p0, p1)
+    }
+
+    override fun getModuleInfo(p0: String, p1: Int): ModuleInfo {
+        logCurrentMethod()
+        return basePM.getModuleInfo(p0, p1)
+    }
+
+    override fun getInstalledModules(p0: Int): MutableList<ModuleInfo> {
+        logCurrentMethod()
+        return basePM.getInstalledModules(p0)
+    }
+
+    @RequiresApi(33)
+    override fun getPackagesHoldingPermissions(p0: Array<String>, p1: PackageInfoFlags): MutableList<PackageInfo> {
+        logCurrentMethod()
+        return basePM.getPackagesHoldingPermissions(p0, p1)
+    }
+
+    override fun getWhitelistedRestrictedPermissions(p0: String, p1: Int): MutableSet<String> {
+        logCurrentMethod()
+        return basePM.getWhitelistedRestrictedPermissions(p0, p1)
+    }
+
+    override fun addWhitelistedRestrictedPermission(p0: String, p1: String, p2: Int): Boolean {
+        logCurrentMethod()
+        return basePM.addWhitelistedRestrictedPermission(p0, p1, p2)
+    }
+
+    override fun removeWhitelistedRestrictedPermission(p0: String, p1: String, p2: Int): Boolean {
+        logCurrentMethod()
+        return basePM.removeWhitelistedRestrictedPermission(p0, p1, p2)
+    }
+
+    override fun setAutoRevokeWhitelisted(p0: String, p1: Boolean): Boolean {
+        logCurrentMethod()
+        return basePM.setAutoRevokeWhitelisted(p0, p1)
+    }
+
+    override fun isAutoRevokeWhitelisted(p0: String): Boolean {
+        logCurrentMethod()
+        return basePM.isAutoRevokeWhitelisted(p0)
+    }
+
+    override fun getBackgroundPermissionOptionLabel(): CharSequence {
+        logCurrentMethod()
+        return basePM.getBackgroundPermissionOptionLabel()
+    }
+
+    @RequiresApi(33)
+    override fun getInstalledApplications(p0: ApplicationInfoFlags): MutableList<ApplicationInfo> {
+        logCurrentMethod()
+        return basePM.getInstalledApplications(p0)
+    }
+
+    @RequiresApi(33)
+    override fun getSharedLibraries(p0: PackageInfoFlags): MutableList<SharedLibraryInfo> {
+        logCurrentMethod()
+        return basePM.getSharedLibraries(p0)
+    }
+
+    @RequiresApi(33)
+    override fun queryBroadcastReceivers(p0: Intent, p1: ResolveInfoFlags): MutableList<ResolveInfo> {
+        logCurrentMethod()
+        return basePM.queryBroadcastReceivers(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun resolveService(p0: Intent, p1: ResolveInfoFlags): ResolveInfo? {
+        logCurrentMethod()
+        return basePM.resolveService(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun queryIntentServices(p0: Intent, p1: ResolveInfoFlags): MutableList<ResolveInfo> {
+        logCurrentMethod()
+        return basePM.queryIntentServices(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun queryIntentContentProviders(p0: Intent, p1: ResolveInfoFlags): MutableList<ResolveInfo> {
+        logCurrentMethod()
+        return basePM.queryIntentContentProviders(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun resolveContentProvider(p0: String, p1: ComponentInfoFlags): ProviderInfo? {
+        logCurrentMethod()
+        return basePM.resolveContentProvider(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun queryContentProviders(p0: String?, p1: Int, p2: ComponentInfoFlags): MutableList<ProviderInfo> {
+        logCurrentMethod()
+        return basePM.queryContentProviders(p0, p1, p2)
+    }
+
+    @RequiresApi(31)
+    override fun getResourcesForApplication(p0: ApplicationInfo, p1: Configuration?): Resources {
+        logCurrentMethod()
+        return basePM.getResourcesForApplication(p0, p1)
+    }
+
+    override fun getPackageArchiveInfo(p0: String, p1: Int): PackageInfo? {
+        logCurrentMethod()
+        return basePM.getPackageArchiveInfo(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun getPackageArchiveInfo(p0: String, p1: PackageInfoFlags): PackageInfo? {
+        logCurrentMethod()
+        return basePM.getPackageArchiveInfo(p0, p1)
+    }
+
+    @RequiresApi(33)
+    override fun setComponentEnabledSettings(p0: MutableList<ComponentEnabledSetting>) {
+        logCurrentMethod()
+        basePM.setComponentEnabledSettings(p0)
+    }
+
+    override fun getSyntheticAppDetailsActivityEnabled(p0: String): Boolean {
+        logCurrentMethod()
+        return basePM.getSyntheticAppDetailsActivityEnabled(p0)
+    }
+
+    override fun isPackageSuspended(p0: String): Boolean {
+        logCurrentMethod()
+        return basePM.isPackageSuspended(p0)
+    }
+
+    override fun isPackageSuspended(): Boolean {
+        logCurrentMethod()
+        return basePM.isPackageSuspended()
+    }
+
+    override fun getSuspendedPackageAppExtras(): Bundle? {
+        logCurrentMethod()
+        return basePM.getSuspendedPackageAppExtras()
+    }
+
+    override fun isDeviceUpgrading(): Boolean {
+        logCurrentMethod()
+        return basePM.isDeviceUpgrading()
+    }
+
+    override fun hasSigningCertificate(p0: String, p1: ByteArray, p2: Int): Boolean {
+        logCurrentMethod()
+        return basePM.hasSigningCertificate(p0, p1, p2)
+    }
+
+    override fun hasSigningCertificate(p0: Int, p1: ByteArray, p2: Int): Boolean {
+        logCurrentMethod()
+        return basePM.hasSigningCertificate(p0, p1, p2)
+    }
+
+    @RequiresApi(31)
+    override fun requestChecksums(p0: String, p1: Boolean, p2: Int, p3: MutableList<Certificate>, p4: OnChecksumsReadyListener) {
+        logCurrentMethod()
+        basePM.requestChecksums(p0, p1, p2, p3, p4)
+    }
+
+    override fun isAutoRevokeWhitelisted(): Boolean {
+        logCurrentMethod()
+        return basePM.isAutoRevokeWhitelisted()
+    }
+
+    override fun isDefaultApplicationIcon(p0: Drawable): Boolean {
+        logCurrentMethod()
+        return basePM.isDefaultApplicationIcon(p0)
+    }
+
+    override fun setMimeGroup(p0: String, p1: MutableSet<String>) {
+        logCurrentMethod()
+        basePM.setMimeGroup(p0, p1)
+    }
+
+    override fun getMimeGroup(p0: String): MutableSet<String> {
+        logCurrentMethod()
+        return basePM.getMimeGroup(p0)
+    }
+
+    @RequiresApi(31)
+    override fun getProperty(p0: String, p1: String): Property {
+        logCurrentMethod()
+        return basePM.getProperty(p0, p1)
+    }
+
+    @RequiresApi(31)
+    override fun getProperty(p0: String, p1: ComponentName): Property {
+        logCurrentMethod()
+        return basePM.getProperty(p0, p1)
+    }
+
+    @RequiresApi(31)
+    override fun queryApplicationProperty(p0: String): MutableList<Property> {
+        logCurrentMethod()
+        return basePM.queryApplicationProperty(p0)
+    }
+
+    @RequiresApi(31)
+    override fun queryProviderProperty(p0: String): MutableList<Property> {
+        logCurrentMethod()
+        return basePM.queryProviderProperty(p0)
+    }
+
+    @RequiresApi(31)
+    override fun queryReceiverProperty(p0: String): MutableList<Property> {
+        logCurrentMethod()
+        return basePM.queryReceiverProperty(p0)
+    }
+
+    @RequiresApi(31)
+    override fun queryServiceProperty(p0: String): MutableList<Property> {
+        logCurrentMethod()
+        return basePM.queryServiceProperty(p0)
+    }
+
+    @RequiresApi(33)
+    override fun canPackageQuery(p0: String, p1: String): Boolean {
+        logCurrentMethod()
+        return basePM.canPackageQuery(p0, p1)
+    }
+
+    @RequiresApi(34)
+    override fun canPackageQuery(p0: String, p1: Array<String>): BooleanArray {
+        logCurrentMethod()
+        return basePM.canPackageQuery(p0, p1)
+    }
+
+    @RequiresApi(34)
+    override fun relinquishUpdateOwnership(p0: String) {
+        logCurrentMethod()
+        basePM.relinquishUpdateOwnership(p0)
     }
 }
