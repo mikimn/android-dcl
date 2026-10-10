@@ -50,8 +50,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: lint-and-test
-    # APK + email only for changes that land on master, not for PRs.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # APK + email only for changes that land on master (or a manual run), not for PRs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/master')
     env:
       SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
     steps:
