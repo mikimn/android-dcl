@@ -36,11 +36,13 @@ layer over real third-party APKs.
 - `AndroidManifestReader` needs a real `Resources`/XML parser, so it is covered by the on-device
   Tier 0 tests rather than here.
 
-**Known-gap baseline.** `PackageManagerWrapperCompletenessTest` reflects over the SDK's
-`PackageManager` and requires the wrapper to override every concrete public method (otherwise the
-caller hits the base-class `UnsupportedOperationException` stub). Methods not yet overridden are
-listed in `app/src/test/resources/package-manager-wrapper-known-gaps.txt`; the test fails on any
-*new* gap and on any listed method that has since been fixed, so the list can only shrink.
+**Wrapper completeness.** `PackageManagerWrapperCompletenessTest` reflects over the SDK's
+`PackageManager` and requires `PackageManagerWrapper` to override every concrete public method
+(otherwise the caller hits the base-class `UnsupportedOperationException` stub). Deliberately
+deferred methods can be listed in `app/src/test/resources/package-manager-wrapper-known-gaps.txt`
+(currently empty); the test fails on any *new* gap and on any listed method that has since been
+fixed, so the list can only shrink. When bumping `compileSdk`, new `PackageManager` methods show
+up here as failures.
 
 **Known bugs as `@Ignore`d tests.** A test that encodes the desired behavior of a known bug is kept
 `@Ignore`d with the reason; remove the `@Ignore` in the PR that fixes it (the zip-slip test

@@ -10,6 +10,7 @@ import android.content.pm.ProviderInfo
 import android.content.pm.ResolveInfo
 import android.content.pm.ServiceInfo
 import android.util.Log
+import androidx.annotation.RequiresApi
 
 class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManagerPlugin>): PackageManagerWrapper(base) {
     private val pluginList: MutableList<PackageManagerPlugin> = plugins.toMutableList()
@@ -94,6 +95,40 @@ class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManage
 
         return super.resolveActivity(p0, p1)
     }
+
+    // API 33 added `*Flags` overloads of the lookups above. Apps targeting 33+ call those, and the
+    // base-class wrapper would hand them straight to the real PackageManager, silently bypassing
+    // every plugin (e.g. ManifestAwarePlugin). Route them through the Int-flag versions, which is
+    // what the framework itself does. `flags.value` is a Long; `.toInt()` deliberately truncates
+    // it to the low 32 bits exactly like the framework's own `(int) flags.getValue()`, so any
+    // flag above bit 31 is dropped here as it would be there.
+    @RequiresApi(33)
+    override fun getActivityInfo(p0: ComponentName, p1: ComponentInfoFlags): ActivityInfo =
+        getActivityInfo(p0, p1.value.toInt())
+
+    @RequiresApi(33)
+    override fun getReceiverInfo(p0: ComponentName, p1: ComponentInfoFlags): ActivityInfo =
+        getReceiverInfo(p0, p1.value.toInt())
+
+    @RequiresApi(33)
+    override fun getServiceInfo(p0: ComponentName, p1: ComponentInfoFlags): ServiceInfo =
+        getServiceInfo(p0, p1.value.toInt())
+
+    @RequiresApi(33)
+    override fun getProviderInfo(p0: ComponentName, p1: ComponentInfoFlags): ProviderInfo =
+        getProviderInfo(p0, p1.value.toInt())
+
+    @RequiresApi(33)
+    override fun getApplicationInfo(p0: String, p1: ApplicationInfoFlags): ApplicationInfo =
+        getApplicationInfo(p0, p1.value.toInt())
+
+    @RequiresApi(33)
+    override fun getPackageInfo(packageName: String, flags: PackageInfoFlags): PackageInfo =
+        getPackageInfo(packageName, flags.value.toInt())
+
+    @RequiresApi(33)
+    override fun resolveActivity(intent: Intent, flags: ResolveInfoFlags): ResolveInfo? =
+        resolveActivity(intent, flags.value.toInt())
 
     fun addPlugin(plugin: PackageManagerPlugin) {
         pluginList.add(0, plugin)

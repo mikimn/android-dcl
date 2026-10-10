@@ -104,4 +104,39 @@ class PackageManagerAggregateTest {
         val agg = aggregate(FakePlugin("a.pkg", "from-a"))
         assertThat(agg.resolveActivity(Intent("some.unhandled.ACTION"), 0)).isNull()
     }
+
+    // ---- API 33 `*Flags` overloads must also go through the plugins ---------------------------
+
+    @Test fun flagsOverloadsConsultPluginsToo() {
+        val agg = aggregate(FakePlugin("a.pkg", "from-a"))
+        val component = PackageManager.ComponentInfoFlags.of(0)
+        assertThat(agg.getActivityInfo(cn("a.pkg"), component).name).isEqualTo("from-a")
+        assertThat(agg.getReceiverInfo(cn("a.pkg"), component).name).isEqualTo("from-a")
+        assertThat(agg.getServiceInfo(cn("a.pkg"), component).name).isEqualTo("from-a")
+        assertThat(agg.getProviderInfo(cn("a.pkg"), component).name).isEqualTo("from-a")
+        assertThat(agg.getApplicationInfo("a.pkg", PackageManager.ApplicationInfoFlags.of(0)).name).isEqualTo("from-a")
+        assertThat(agg.getPackageInfo("a.pkg", PackageManager.PackageInfoFlags.of(0)).packageName).isEqualTo("from-a")
+        val resolved = agg.resolveActivity(Intent().setPackage("a.pkg"), PackageManager.ResolveInfoFlags.of(0))
+        assertThat(resolved?.resolvePackageName).isEqualTo("from-a")
+    }
+
+    @Test fun flagsOverloadsFallThroughToBase() {
+        val agg = aggregate(FakePlugin("a.pkg", "from-a"))
+        assertThat(agg.getPackageInfo(hostPkg, PackageManager.PackageInfoFlags.of(0)).packageName).isEqualTo(hostPkg)
+        assertThrows(PackageManager.NameNotFoundException::class.java) {
+            agg.getPackageInfo("nope.nope", PackageManager.PackageInfoFlags.of(0))
+        }
+    }
+
+    @Test fun flagsValueIsForwardedToThePlugin() {
+        var seen = -1
+        val plugin = object : PackageManagerPlugin by FakePlugin("a.pkg", "from-a") {
+            override fun getPackageInfo(packageName: String, flags: Int): PackageInfo {
+                seen = flags
+                return PackageInfo().apply { this.packageName = "from-a" }
+            }
+        }
+        aggregate(plugin).getPackageInfo("a.pkg", PackageManager.PackageInfoFlags.of(PackageManager.GET_ACTIVITIES.toLong()))
+        assertThat(seen).isEqualTo(PackageManager.GET_ACTIVITIES)
+    }
 }
