@@ -61,13 +61,6 @@ object ProviderRegistry {
 
             val keyClass = Class.forName("android.app.ActivityThread\$ProviderKey")
             val userId = Process.myUid() / PER_USER_RANGE
-            val taken = synchronized(providerMap) {
-                authorities.firstOrNull { providerMap.containsKey(HiddenApiBypass.newInstance(keyClass, it, userId)) }
-            }
-            if (taken != null) {
-                Log.w(TAG, "Not registering ${info.name}: authority $taken is already served in this process")
-                return false
-            }
 
             // The manifest-derived ApplicationInfo has no uid; installProviderAuthoritiesLocked
             // derives the user id from it, and the resolver looks it up under the host's user.
@@ -81,11 +74,20 @@ object ProviderRegistry {
             holderClass.getField("provider").set(holder, binder)
             holderClass.getField("noReleaseNeeded").setBoolean(holder, true)
 
-            synchronized(providerMap) {
-                HiddenApiBypass.invoke(
-                    activityThreadClass, activityThread, "installProviderAuthoritiesLocked",
-                    binder, provider, holder
-                )
+            // Check and install under one lock, so nobody can claim the authority in between.
+            val taken = synchronized(providerMap) {
+                authorities.firstOrNull { providerMap.containsKey(HiddenApiBypass.newInstance(keyClass, it, userId)) }
+                    ?: run {
+                        HiddenApiBypass.invoke(
+                            activityThreadClass, activityThread, "installProviderAuthoritiesLocked",
+                            binder, provider, holder
+                        )
+                        null
+                    }
+            }
+            if (taken != null) {
+                Log.w(TAG, "Not registering ${info.name}: authority $taken is already served in this process")
+                return false
             }
             registered.add(id)
             Log.i(TAG, "Registered ${info.name} for authorities ${info.authority}")
