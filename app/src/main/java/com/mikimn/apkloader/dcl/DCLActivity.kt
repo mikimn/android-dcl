@@ -180,6 +180,7 @@ class DCLActivity : ComponentActivity() {
                     // Should not be called, because attachInfo already does that
                     //  https://cs.android.com/android/platform/superproject/main/+/main:frameworks/base/core/java/android/content/ContentProvider.java;l=2649;drc=61197364367c9e404c7da6900658f1b16c42d0da
                     // provider.onCreate()
+                    ProviderRegistry.register(provider, providerInfo)
                 }
             } catch (e: Throwable) {
                 // Best effort: a provider that can't attach in the shadowed environment

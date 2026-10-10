@@ -9,10 +9,25 @@ import android.content.pm.PackageManager
 import android.content.pm.ProviderInfo
 import android.content.pm.ResolveInfo
 import android.content.pm.ServiceInfo
+import android.os.Process
 import android.util.Log
 
 class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManagerPlugin>): PackageManagerWrapper(base) {
     private val pluginList: MutableList<PackageManagerPlugin> = plugins.toMutableList()
+
+    /**
+     * What a loaded APK should see as its own identity when it resolves our uid (this process's
+     * uid is shared with the host). Apps verify "who is calling me" this way, e.g. a ContentProvider
+     * that only accepts `getNameForUid(Binder.getCallingUid()) == <own package>`, and an in-process
+     * call from the loaded app to its own provider would otherwise be rejected as the host.
+     * Returns null when the current caller isn't the loaded APK's own code.
+     */
+    var ownUidPackageResolver: (() -> String?)? = null
+
+    override fun getNameForUid(p0: Int): String? {
+        if (p0 == Process.myUid()) ownUidPackageResolver?.invoke()?.let { return it }
+        return super.getNameForUid(p0)
+    }
 
     override fun getActivityInfo(p0: ComponentName, p1: Int): ActivityInfo {
         for (plugin in pluginList) {

@@ -11,6 +11,7 @@ import android.util.Log
 import com.mikimn.apkloader.MyContextWrapper
 import com.mikimn.apkloader.plugins.DefaultPluginProvider
 import com.mikimn.apkloader.plugins.ContextPluginProvider
+import com.mikimn.apkloader.pm.PackageManagerAggregate
 
 class DCLContext(base: Context, private val pluginProvider: ContextPluginProvider = DefaultPluginProvider()) : ContextWrapper(base) {
     companion object {
@@ -21,7 +22,9 @@ class DCLContext(base: Context, private val pluginProvider: ContextPluginProvide
     override fun getPackageManager(): PackageManager {
         Log.e("DCLContext", "INVOKE getPackageManager")
         val base = super.getPackageManager()
-        return pluginProvider.providePackageManager(base)
+        return pluginProvider.providePackageManager(base).also {
+            (it as? PackageManagerAggregate)?.ownUidPackageResolver = ::loadedPackageForCaller
+        }
     }
 
     override fun startService(service: Intent?): ComponentName? {
@@ -32,11 +35,14 @@ class DCLContext(base: Context, private val pluginProvider: ContextPluginProvide
     // OS-level subsystems (WebView among them, confirmed on-device) rely on getPackageName()
     // returning the host's actual, installed identity and break if lied to unconditionally.
     // See docs/apk-test-log.md's "Meme Generator" research notes for how this was derived.
-    override fun getPackageName(): String {
-        val shadow = shadowPackageName ?: return super.getPackageName()
-        val loader = classLoader as? FileTrackingClassLoader ?: return super.getPackageName()
-        val callerClassName = CallerClassResolver.findRealCallerClassName() ?: return super.getPackageName()
-        return if (loader.ownerOf(callerClassName) != null) shadow else super.getPackageName()
+    override fun getPackageName(): String = loadedPackageForCaller() ?: super.getPackageName()
+
+    /** The loaded package's name if (and only if) the real caller is that APK's own code. */
+    private fun loadedPackageForCaller(): String? {
+        val shadow = shadowPackageName ?: return null
+        val loader = classLoader as? FileTrackingClassLoader ?: return null
+        val callerClassName = CallerClassResolver.findRealCallerClassName() ?: return null
+        return if (loader.ownerOf(callerClassName) != null) shadow else null
     }
 
     private var cachedResources: Resources? = null
