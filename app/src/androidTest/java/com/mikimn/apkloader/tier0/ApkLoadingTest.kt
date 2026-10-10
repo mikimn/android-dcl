@@ -98,8 +98,12 @@ class ApkLoadingTest {
         val intent = intentFor(DCLActivity.KEY_LOADED_APK_NAME, evil.path)
         assertThat(ApkLoading.preload(context, loader, intent)).isNull()
 
-        val first = assertThrows(SecurityException::class.java) { ApkLoading.load(context, loader, evil.path) }
-        val second = assertThrows(SecurityException::class.java) { ApkLoading.load(context, loader, evil.path) }
+        // Our zip-slip guard (SecurityException) or, on newer Android, ZipFile itself (ZipException).
+        fun rejection() = assertThrows(Exception::class.java) { ApkLoading.load(context, loader, evil.path) }.also {
+            assertThat(it is SecurityException || it is java.util.zip.ZipException).isTrue()
+        }
+        val first = rejection()
+        val second = rejection()
         assertThat(second).isSameInstanceAs(first) // remembered, not re-extracted
         assertThat(loader.apkFile(evil.path)).isNull()
         evil.delete()

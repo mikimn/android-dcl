@@ -24,7 +24,7 @@ object ApkLoading {
      */
     fun load(context: Context, loader: FileTrackingClassLoader, apkName: String): LoadedApk {
         loader.apkFile(apkName)?.let { return it }
-        // A hostile archive already failed the zip-slip guard in this process: don't extract it again.
+        // This archive was already rejected in this process: don't extract it again.
         rejected[apkName]?.let { throw it }
 
         val reader = AssetReader(context)
@@ -43,9 +43,11 @@ object ApkLoading {
         return loadedApk
     }
 
-    // Archives that failed the zip-slip guard, so a second activity instance (or DCLActivity.onCreate
-    // after a failed preload) reports the same failure instead of extracting the hostile APK again.
-    private val rejected = java.util.concurrent.ConcurrentHashMap<String, SecurityException>()
+    // Archives rejected as hostile or malformed, so a second activity instance (or DCLActivity.onCreate
+    // after a failed preload) reports the same failure instead of extracting the APK again. That is
+    // our own zip-slip guard (SecurityException) or, on newer Android, ZipFile itself refusing a
+    // traversal entry while opening the archive (ZipException).
+    private val rejected = java.util.concurrent.ConcurrentHashMap<String, Exception>()
 
     /**
      * The APK a hosted-activity [intent] refers to (an explicit launch, or a navigation hop), if any.
@@ -71,7 +73,7 @@ object ApkLoading {
         return try {
             load(context, tracking, apkName)
         } catch (e: Throwable) {
-            if (e is SecurityException) rejected[apkName] = e
+            if (e is SecurityException || e is java.util.zip.ZipException) rejected[apkName] = e as Exception
             Log.e(TAG, "Preload of $apkName failed; DCLActivity.onCreate will report it", e)
             null
         }
