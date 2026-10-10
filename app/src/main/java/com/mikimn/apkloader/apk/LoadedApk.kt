@@ -11,16 +11,25 @@ import android.os.Process
 import android.util.Log
 import com.mikimn.apkloader.reflection.tryGetMethod
 import com.mikimn.apkloader.utils.Zip
-import dalvik.system.InMemoryDexClassLoader
+import dalvik.system.DexClassLoader
 import java.io.File
 import java.io.FileInputStream
-import java.nio.ByteBuffer
 import java.util.zip.ZipFile
 
 class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
     var loader: ClassLoader? = null
     var resourcesProvider: ResourcesProvider? = null
     var manifestReader: AndroidManifestReader? = null
+
+    /**
+     * Where this APK lives on disk once loaded. Shadow `ApplicationInfo`/`Context` paths report
+     * these instead of the host's own APK, because libraries reopen their own APK by path
+     * (crash reporters, asset-bundle loaders, split-install helpers, ...).
+     */
+    data class Paths(val apk: File, val splits: List<File>, val nativeLibraryDir: File?)
+
+    var paths: Paths? = null
+        private set
 
     // A real Android process has exactly one Application instance for its whole
     // lifetime, shared across every Activity. DCLActivity.onCreate() runs once per
@@ -41,12 +50,10 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
 
     // TODO support load from assets
     fun load(data: ByteArray, resources: Resources) {
-        var tempFile: File? = null
+        var apkFile: File? = null
         var extractionDir: File? = null
+        var loaded = false
         try {
-            tempFile = File.createTempFile("temp", ".apk")
-            tempFile.writeBytes(data)
-            tempFile.setReadOnly()
 
             // Only present when `name` is an absolute on-device path (e.g. an installed
             // app's APK); bare asset names like "calculator.apk" have no parent directory
@@ -65,8 +72,11 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             // "data/app/~~.../..." tree, with every device-path-loaded APK's cache nested
             // inside it rather than each getting its own directory).
             val cacheDirName = "cache-" + name.replace(File.separatorChar, '_')
-            var extractedApkDirectory = tempFile.parentFile!!
-            extractedApkDirectory = File(extractedApkDirectory, cacheDirName)
+            val cacheRoot = File(System.getProperty("java.io.tmpdir")!!)
+            // Kept on disk for the life of the process (it used to be a deleted temp file): the
+            // class loader reads dex from it, and loaded code can reopen it by path.
+            apkFile = persistApk(data, File(cacheRoot, "$cacheDirName.apk"))
+            var extractedApkDirectory = File(cacheRoot, cacheDirName)
             // Clear any previous extraction for this name first: a re-test of the same
             // `name` (e.g. a bundled sample rebuilt with different content) must not leave
             // stale files from an older version of the APK lying around.
@@ -75,7 +85,7 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             extractionDir = extractedApkDirectory
 
             // Zip.unzip(ZipInputStream(tempFile.inputStream()), extractedApkDirectory)
-            Zip.unzip(ZipFile(tempFile), extractedApkDirectory)
+            Zip.unzip(ZipFile(apkFile), extractedApkDirectory)
 
             val splitApks = apkInstallDir?.let { discoverSplitApks(it) } ?: emptyList()
             val splitApkNativeDirs = mutableListOf<File>()
@@ -94,7 +104,7 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             val baseApkNativeDir = primaryAbiDir(File(extractedApkDirectory, "lib"))
 
             loader = buildClassLoader(
-                extractedApkDirectory,
+                apkFile,
                 splitApkNativeDirs + listOf(nativeLibsUncompressedDir),
                 listOfNotNull(baseApkNativeDir),
                 baseClassLoader
@@ -108,13 +118,13 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             addDexPath?.isAccessible = true
             addDexPath?.invoke(loader!!, extractedApkDirectory.absolutePath)
 
-            resourcesProvider = buildResourceProvider(tempFile)
+            resourcesProvider = buildResourceProvider(apkFile)
             val manifestFile = extractedApkDirectory
                 .listFiles { f -> f.name == "AndroidManifest.xml" }
                 ?.firstOrNull()
 
             resources.addLoaders(ResourcesLoader().apply {
-                addProvider(buildResourceProvider(tempFile))
+                addProvider(buildResourceProvider(apkFile))
                 addProvider(buildResourceProviderFromDir(extractedApkDirectory))
                 // Config splits (e.g. split_config.xxxhdpi.apk) carry density/language/ABI-
                 // specific resources - such as bitmap drawables referenced from a base-APK
@@ -128,6 +138,16 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
 
             manifestReader = manifestFile?.let { AndroidManifestReader(it.parentFile!!, FileInputStream(it), resources) }
 
+            paths = Paths(apkFile, splitApks, baseApkNativeDir ?: nativeLibsUncompressedDir)
+            manifestReader?.getApplicationInfo()?.let { info ->
+                info.sourceDir = apkFile.path
+                info.publicSourceDir = apkFile.path
+                info.splitSourceDirs = splitApks.map { it.path }.toTypedArray().takeIf { it.isNotEmpty() }
+                info.splitPublicSourceDirs = info.splitSourceDirs
+                paths!!.nativeLibraryDir?.let { info.nativeLibraryDir = it.path }
+            }
+            loaded = true
+
         } catch (e: SecurityException) {
             // A hostile archive (zip-slip): don't leave its half-extracted, attacker-controlled
             // files in the cache. `loader` was never built, so nothing can class-load from them,
@@ -135,8 +155,27 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             extractionDir?.deleteRecursively()
             throw e
         } finally {
-            tempFile?.delete()
+            // A failed load must not leave a half-trusted APK lying around; a successful one
+            // keeps it, since the class loader and loaded code use it.
+            if (!loaded) apkFile?.delete()
         }
+    }
+
+    /**
+     * Writes [data] to [target] read-only and atomically replaces any previous copy: an earlier
+     * LoadedApk for the same name (same process) may still have its class loader reading the old
+     * file, which stays valid because it is replaced by rename, never rewritten in place.
+     */
+    private fun persistApk(data: ByteArray, target: File): File {
+        val part = File.createTempFile(target.name, ".part", target.parentFile)
+        try {
+            part.writeBytes(data)
+            part.setReadOnly()
+            if (!part.renameTo(target)) throw java.io.IOException("Could not move $part to $target")
+        } finally {
+            part.delete() // no-op after a successful rename
+        }
+        return target
     }
 
     /**
@@ -166,22 +205,11 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
     }
 
     private fun buildClassLoader(
-        extractedApkDirectory: File,
+        apkFile: File,
         nativeLibsUncompressedDirs: List<File?>,
         nativeLibAbiDirs: List<File>,
         baseClassLoader: ClassLoader
     ): ClassLoader {
-        val dexFiles = extractedApkDirectory.listFiles { f -> f.extension == "dex" }
-
-        if (dexFiles == null) {
-            throw IllegalStateException("Could not list files from extracted APK at ${extractedApkDirectory.path}")
-        }
-
-        val dexBuffers = dexFiles.map { dexFile ->
-            dexFile.setReadOnly()
-            ByteBuffer.wrap(dexFile.readBytes())
-        }.toTypedArray()
-
         // filterNotNull first: a null dir (no install-dir lib/, e.g. any asset-loaded APK) used
         // to stringify into a literal "null:" search path entry.
         val allLibPaths = nativeLibsUncompressedDirs.filterNotNull().map { file ->
@@ -189,7 +217,11 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
                 ?.joinToString(File.pathSeparator) { it.absolutePath } ?: "")
         }.plus(nativeLibAbiDirs.map { it.absolutePath }).joinToString(File.pathSeparator)
 
-        return InMemoryDexClassLoader(dexBuffers, allLibPaths, baseClassLoader)
+        // File-backed (not InMemoryDexClassLoader), so ART can compile/verify the dex ahead of
+        // time and share it between processes instead of re-interpreting it from memory on every
+        // start. Every classes*.dex in the APK is picked up. The optimized directory is ignored
+        // since API 26.
+        return DexClassLoader(apkFile.absolutePath, null, allLibPaths, baseClassLoader)
     }
 
     private fun buildResourceProvider(apkFile: File): ResourcesProvider {

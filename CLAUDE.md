@@ -80,9 +80,10 @@ activities, Firebase `datatransport` services, …) remain from before the ATM h
 
 ### Code & resource loading
 
-`LoadedApk.load()` writes the APK bytes to a temp file, extracts it into a per-APK cache dir
-(`utils/Zip`), discovers `split_config.*.apk` siblings when loaded from an install dir, builds an
-`InMemoryDexClassLoader` (parent: the host classloader's parent) whose native library path is the
+`LoadedApk.load()` writes the APK bytes to a read-only file in the host's cache dir (kept for the
+process's life, replaced atomically by rename; `LoadedApk.paths`), extracts it into a per-APK cache
+dir (`utils/Zip`), discovers `split_config.*.apk` siblings when loaded from an install dir, builds a
+file-backed `DexClassLoader` (so ART can dex2oat/verify it; parent: the host classloader's parent) whose native library path is the
 install dir's `lib/`, the extracted split `lib/` dirs, and the base APK's own extracted
 `lib/<abi>` for the host process's most-preferred ABI. 32-bit-only libs can't load in a 64-bit
 host; `LoadedApk` logs a warning when an APK ships libs but none match. It then registers

@@ -101,6 +101,48 @@ class LoadedApkTest {
         assertThat(cacheDir("fx-resources.apk").list()!!.toList()).contains("assets")
     }
 
+    // ---- on-disk APK, file-backed loader, ApplicationInfo paths -------------------------------
+
+    @Test fun apkIsKeptOnDiskReadOnlyAndMatchesTheInput() {
+        val apk = fx.load("fx-hello.apk")
+        val onDisk = apk.paths!!.apk
+        assertThat(onDisk.isFile).isTrue()
+        assertThat(onDisk.canWrite()).isFalse()
+        assertThat(onDisk.readBytes()).isEqualTo(FixtureApks.install("fx-hello.apk").readBytes())
+        assertThat(onDisk.parentFile).isEqualTo(File(System.getProperty("java.io.tmpdir")!!))
+    }
+
+    @Test fun classesAreLoadedByAFileBackedDexClassLoader() {
+        val apk = fx.load("fx-hello.apk")
+        assertThat(apk.loader).isInstanceOf(dalvik.system.DexClassLoader::class.java)
+        assertThat(apk.loader.toString()).contains(apk.paths!!.apk.path)
+    }
+
+    @Test fun applicationInfoPointsAtTheLoadedApk() {
+        val apk = fx.load("fx-hello.apk")
+        val info = apk.manifestReader!!.getApplicationInfo()
+        assertThat(info.sourceDir).isEqualTo(apk.paths!!.apk.path)
+        assertThat(info.publicSourceDir).isEqualTo(apk.paths!!.apk.path)
+        assertThat(info.splitSourceDirs).isNull() // loaded from assets: no installed splits
+        // ...and it is a real, reopenable APK (what a library that reopens itself relies on).
+        java.util.zip.ZipFile(info.sourceDir).use { assertThat(it.getEntry("AndroidManifest.xml")).isNotNull() }
+        assertThat(info.sourceDir).isNotEqualTo(fx.targetContext.applicationInfo.sourceDir)
+    }
+
+    @Test fun reloadingTheSameNameDoesNotBreakAnEarlierLoader() {
+        val first = fx.load("fx-hello.apk")
+        // Replaces the on-disk file (by rename) while `first`'s loader still reads the old one.
+        fx.loadedApk("fx-hello.apk").load(FixtureApks.install("fx-hello.apk").readBytes(), fx.resources)
+        assertThat(first.loadClass("com.mikimn.fixture.common.Probe").classLoader).isSameInstanceAs(first.loader)
+    }
+
+    @Test fun failedLoadLeavesNoApkBehind() {
+        val bad = fx.loadedApk("not-an-apk.apk")
+        assertThrows(Exception::class.java) { bad.load("definitely not a zip".toByteArray(), fx.resources) }
+        assertThat(bad.paths).isNull()
+        assertThat(File(System.getProperty("java.io.tmpdir")!!, "cache-not-an-apk.apk.apk").exists()).isFalse()
+    }
+
     // ---- resources --------------------------------------------------------------------------
 
     @Test fun loadedResourcesResolveByNameWithTheAppsOwnPackageId() {
