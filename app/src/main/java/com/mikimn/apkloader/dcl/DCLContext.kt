@@ -17,13 +17,27 @@ class DCLContext(base: Context, private val pluginProvider: ContextPluginProvide
     companion object {
         private var shadowPackageName: String? = null
         var shadowApp: Application? = null
+
+        // Process-lifetime state, deliberately not an instance: PackageManagerAggregate is a
+        // process-wide singleton, so a resolver that captured a DCLContext (which wraps an
+        // Activity/Application base) would keep every context it was last handed alive.
+        @Volatile private var trackingLoader: FileTrackingClassLoader? = null
+
+        /** The loaded package's name if (and only if) the real caller is that APK's own code. */
+        fun loadedPackageForCaller(): String? {
+            val shadow = shadowPackageName ?: return null
+            val loader = trackingLoader ?: return null
+            val callerClassName = CallerClassResolver.findRealCallerClassName() ?: return null
+            return if (loader.ownerOf(callerClassName) != null) shadow else null
+        }
     }
 
     override fun getPackageManager(): PackageManager {
         Log.e("DCLContext", "INVOKE getPackageManager")
         val base = super.getPackageManager()
+        (classLoader as? FileTrackingClassLoader)?.let { trackingLoader = it }
         return pluginProvider.providePackageManager(base).also {
-            (it as? PackageManagerAggregate)?.ownUidPackageResolver = ::loadedPackageForCaller
+            (it as? PackageManagerAggregate)?.ownUidPackageResolver = Companion::loadedPackageForCaller
         }
     }
 
@@ -35,14 +49,9 @@ class DCLContext(base: Context, private val pluginProvider: ContextPluginProvide
     // OS-level subsystems (WebView among them, confirmed on-device) rely on getPackageName()
     // returning the host's actual, installed identity and break if lied to unconditionally.
     // See docs/apk-test-log.md's "Meme Generator" research notes for how this was derived.
-    override fun getPackageName(): String = loadedPackageForCaller() ?: super.getPackageName()
-
-    /** The loaded package's name if (and only if) the real caller is that APK's own code. */
-    private fun loadedPackageForCaller(): String? {
-        val shadow = shadowPackageName ?: return null
-        val loader = classLoader as? FileTrackingClassLoader ?: return null
-        val callerClassName = CallerClassResolver.findRealCallerClassName() ?: return null
-        return if (loader.ownerOf(callerClassName) != null) shadow else null
+    override fun getPackageName(): String {
+        (classLoader as? FileTrackingClassLoader)?.let { trackingLoader = it }
+        return loadedPackageForCaller() ?: super.getPackageName()
     }
 
     private var cachedResources: Resources? = null

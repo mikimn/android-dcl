@@ -139,4 +139,38 @@ class PackageManagerAggregateTest {
         aggregate(plugin).getPackageInfo("a.pkg", PackageManager.PackageInfoFlags.of(PackageManager.GET_ACTIVITIES.toLong()))
         assertThat(seen).isEqualTo(PackageManager.GET_ACTIVITIES)
     }
+
+    // --- own-uid identity (loaded APK asking "who am I?" / "who is calling me?") ---
+
+    private val myUid = android.os.Process.myUid()
+
+    @Test fun ownUidResolvesToLoadedPackageWhenResolverAnswers() {
+        val agg = aggregate()
+        agg.ownUidPackageResolver = { "loaded.pkg" }
+        assertThat(agg.getNameForUid(myUid)).isEqualTo("loaded.pkg")
+        assertThat(agg.getPackagesForUid(myUid)).asList().containsExactly("loaded.pkg")
+    }
+
+    @Test fun ownUidFallsThroughWhenResolverReturnsNull() {
+        val agg = aggregate()
+        agg.ownUidPackageResolver = { null }
+        assertThat(agg.getNameForUid(myUid)).isEqualTo(base.getNameForUid(myUid))
+        assertThat(agg.getPackagesForUid(myUid)).isEqualTo(base.getPackagesForUid(myUid))
+    }
+
+    @Test fun ownUidFallsThroughWhenNoResolverIsSet() {
+        val agg = aggregate()
+        assertThat(agg.getNameForUid(myUid)).isEqualTo(base.getNameForUid(myUid))
+        assertThat(agg.getPackagesForUid(myUid)).isEqualTo(base.getPackagesForUid(myUid))
+    }
+
+    @Test fun otherUidsNeverConsultTheResolver() {
+        val agg = aggregate()
+        var consulted = false
+        agg.ownUidPackageResolver = { consulted = true; "loaded.pkg" }
+        val other = myUid + 1
+        assertThat(agg.getNameForUid(other)).isEqualTo(base.getNameForUid(other))
+        assertThat(agg.getPackagesForUid(other)).isEqualTo(base.getPackagesForUid(other))
+        assertThat(consulted).isFalse()
+    }
 }

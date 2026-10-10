@@ -30,6 +30,12 @@ class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManage
         return super.getNameForUid(p0)
     }
 
+    // Apps verify a caller either by name (above) or by package list; answer both the same way.
+    override fun getPackagesForUid(p0: Int): Array<String>? {
+        if (p0 == Process.myUid()) ownUidPackageResolver?.invoke()?.let { return arrayOf(it) }
+        return super.getPackagesForUid(p0)
+    }
+
     override fun getActivityInfo(p0: ComponentName, p1: Int): ActivityInfo {
         for (plugin in pluginList) {
             try {
