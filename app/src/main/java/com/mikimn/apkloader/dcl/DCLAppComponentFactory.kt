@@ -69,6 +69,8 @@ class DCLAppComponentFactory : CoreComponentFactory() {
         intent: Intent?
     ): Activity {
         Log.e("DCLAppComponentFactory", "instantiateActivity($className, $intent)")
+        // Before the platform reads this activity's saved state: see ApkLoading.preload.
+        ApkLoading.currentApplication()?.let { ApkLoading.preload(it, cl, intent) }
         if (className == DCLActivity::class.java.name || className == MainActivity::class.java.name) {
             return super.instantiateActivity(cl, className, intent)
         }
