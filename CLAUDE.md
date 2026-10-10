@@ -140,6 +140,10 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   "active" at a time. Don't assume concurrent loads work.
 - One shadow `Application` per `LoadedApk` (`LoadedApk.shadowApplication`): creating a second one
   per navigation hop breaks apps with path-keyed singletons (e.g. DataStore).
+- A hosted activity's `getIntent()` is a copy of the host activity's real intent pointed at the shadow
+  class (`ShadowActivity.shadowIntent`; the loader's own routing extras are stripped). It is set once at
+  attach: like the platform, `onNewIntent` does not call `setIntent`, so apps that want the new intent
+  as `getIntent()` call it themselves.
 - Don't hardcode the host package name: derive it from a `Context` or from the intent being
   rewritten (only the dead `MyContextWrapper` and `scripts/test-apk.sh` still hardcode it).
 - All loaded apps share the host's uid and granted permissions. Private storage is per package: the
