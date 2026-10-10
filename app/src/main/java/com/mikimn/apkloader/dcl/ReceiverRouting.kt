@@ -21,12 +21,16 @@ object ReceiverRouting {
         /** An explicit broadcast to a receiver class of a loaded APK: deliver it in-process, don't send it. */
         data class Dispatch(val className: String, val apkName: String) : Route()
 
-        /** An implicit broadcast restricted to a loaded package: now restricted to the host (already applied). */
-        object RestrictedToHost : Route()
+        /**
+         * An implicit broadcast restricted to a loaded package. [intent] is a **copy**, restricted to the
+         * host instead, to send in place of the original, which is left as the app built it.
+         */
+        data class RestrictedToHost(val intent: Intent) : Route()
     }
 
     /**
-     * Decides how to route [intent]; for [Route.RestrictedToHost] the intent has been modified in place.
+     * Decides how to route [intent]. It is never modified: `sendBroadcast` doesn't change the app's
+     * own `Intent` object, so a rewrite is returned as a copy.
      *
      * @param apkNameOfClass the name of the loaded APK that defines a class, or null if none does
      * @param isLoadedPackage whether a package name is one of the loaded apps' own
@@ -46,8 +50,7 @@ object ReceiverRouting {
         // to the host it reaches the dynamically registered proxies (see ReceiverRegistry).
         val pkg = intent.`package`
         if (pkg != null && pkg != hostPackage && isLoadedPackage(pkg)) {
-            intent.setPackage(hostPackage)
-            return Route.RestrictedToHost
+            return Route.RestrictedToHost(Intent(intent).setPackage(hostPackage))
         }
         return Route.None
     }

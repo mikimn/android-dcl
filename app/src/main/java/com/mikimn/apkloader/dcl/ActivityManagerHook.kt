@@ -68,11 +68,13 @@ object ActivityManagerHook {
         private val hostPackageName: String
     ) : InvocationHandler {
         private val main = Handler(Looper.getMainLooper())
+        private val resultReceiverClass: Class<*>? = runCatching { Class.forName("android.content.IIntentReceiver") }.getOrNull()
 
         override fun invoke(proxy: Any?, method: Method, args: Array<out Any?>?): Any? {
             // broadcastIntent / broadcastIntentWithFeature (the signature grew across releases)
             if (method.name.startsWith("broadcastIntent") && args != null) {
-                for (intent in args.filterIsInstance<Intent>()) {
+                for (i in args.indices) {
+                    val intent = args[i] as? Intent ?: continue
                     val route = ReceiverRouting.route(
                         intent, hostPackageName,
                         apkNameOfClass = { loader.ownerOf(it)?.name },
@@ -83,6 +85,9 @@ object ActivityManagerHook {
                             // The system can't resolve this receiver: deliver it here, asynchronously on
                             // the main thread like a real broadcast, and don't send it at all.
                             Log.i(TAG, "[Dispatch] ${route.className} (apk=${route.apkName}) for ${intent.action}")
+                            if (args.any { resultReceiverClass?.isInstance(it) == true }) {
+                                Log.w(TAG, "Dropping the result receiver of an ordered broadcast to ${route.className}")
+                            }
                             val app = ApkLoading.currentApplication()
                             if (app != null) {
                                 val copy = Intent(intent)
@@ -90,8 +95,12 @@ object ActivityManagerHook {
                                 return BROADCAST_SUCCESS
                             }
                         }
-                        ReceiverRouting.Route.RestrictedToHost ->
+                        is ReceiverRouting.Route.RestrictedToHost -> {
+                            // Send the restricted copy; the app's own Intent keeps its original package.
+                            @Suppress("UNCHECKED_CAST")
+                            (args as Array<Any?>)[i] = route.intent
                             Log.i(TAG, "[Rewrite] ${intent.action}: package restricted to the host")
+                        }
                         ReceiverRouting.Route.None -> Unit
                     }
                 }

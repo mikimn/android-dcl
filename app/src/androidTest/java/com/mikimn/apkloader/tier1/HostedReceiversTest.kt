@@ -37,6 +37,10 @@ class HostedReceiversTest {
             // The loaded receiver sees its own component and none of the loader's routing extras...
             assertThat(probe.valueOf("receiver.component.$via")).isEqualTo("com.mikimn.fixture.hello/com.mikimn.fixture.hello.HelloReceiver")
             assertThat(probe.valueOf("receiver.routingExtras.$via")).isEqualTo("false")
+            // The receiver sees the package its sender asked for: the loaded one for the package-restricted
+            // broadcast (the system was sent a host-restricted copy), none for the others.
+            assertThat(probe.valueOf("receiver.package.$via"))
+                .isEqualTo(if (via == "package") "com.mikimn.fixture.hello" else "null")
             // ...and runs with the loaded package's own context (per-package storage), not the host's.
             assertThat(probe.valueOf("receiver.contextClass.$via")).isEqualTo("com.mikimn.apkloader.dcl.DCLContext")
         }
