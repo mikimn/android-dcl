@@ -1061,6 +1061,14 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" >
         </service>
+
+        <!-- The host cannot run manifest receivers: on Android 11 ActivityThread.handleReceiver casts the
+             Application's base context to ContextImpl, and DCLApplication wraps it in DCLContext, so the
+             system delivering to any <receiver> kills the process (#62). Drop the one androidx.profileinstaller
+             merges in; HostManifestTest fails if another dependency adds one. -->
+        <receiver
+            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            tools:node="remove" />
     </application>
 
 </manifest>
