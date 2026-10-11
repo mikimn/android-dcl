@@ -149,6 +149,14 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   class (`ShadowActivity.shadowIntent`; the loader's own routing extras are stripped). It is set once at
   attach: like the platform, `onNewIntent` does not call `setIntent`, so apps that want the new intent
   as `getIntent()` call it themselves.
+- **The system can't instantiate *any* receiver (or other component created via `handleReceiver`) in the
+  host.** On Android 11 `ActivityThread.handleReceiver` casts `app.getBaseContext()` to `ContextImpl`,
+  and `DCLApplication` wraps its base context in `DCLContext`, so a receiver declared in the host
+  manifest and delivered by the system crashes the process (`ClassCastException`). Loaded apps'
+  receivers therefore work only through (a) dynamic registration of `DCLReceiverProxy` per manifest
+  intent filter (`ReceiverRegistry`, implicit broadcasts) and (b) `ActivityManagerHook`, which
+  dispatches explicit-component broadcasts in-process on the main thread (`ReceiverRouting`). Not
+  carried over for explicit broadcasts: `goAsync()`/ordered results. Process-alive only.
 - Don't hardcode the host package name: derive it from a `Context` or from the intent being
   rewritten (only the dead `MyContextWrapper` and `scripts/test-apk.sh` still hardcode it).
 - All loaded apps share the host's uid and granted permissions. Private storage is per package: the

@@ -51,6 +51,19 @@ class DCLContext(
         // Activity/Application base) would keep every context it was last handed alive.
         @Volatile private var trackingLoader: FileTrackingClassLoader? = null
 
+        /**
+         * A context for code of [apk] running outside a hosted activity (e.g. a receiver): the host's
+         * base services, with that package's own storage. [context] may be the host's
+         * Application or any wrapper of it.
+         */
+        @Suppress("UNUSED_PARAMETER") // [apk] is where its code paths come from once the context reports them
+        fun forLoadedApk(context: Context, apk: LoadedApk, packageName: String): Context {
+            var base = context
+            while (base is ContextWrapper && base !is DCLContext) base = base.baseContext
+            if (base is DCLContext) base = base.baseContext
+            return DCLContext(base, virtualPackage = packageName)
+        }
+
         /** The loaded package's name if (and only if) the real caller is that APK's own code. */
         fun loadedPackageForCaller(): String? {
             val shadow = shadowPackageName ?: return null

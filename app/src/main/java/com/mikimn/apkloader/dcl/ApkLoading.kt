@@ -54,6 +54,14 @@ object ApkLoading {
                 }
             )
 
+        // Implicit broadcasts for the app's manifest receivers (explicit ones are rewritten by
+        // ActivityManagerHook). Best effort: never fail the load over a receiver.
+        try {
+            ReceiverRegistry.register(context, loadedApk)
+        } catch (e: Throwable) {
+            Log.w(TAG, "Receiver registration failed for $apkName", e)
+        }
+
         return loadedApk
     }
 

@@ -154,9 +154,10 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
     }
 
     /**
-     * <receiver> elements, with their intent filters. `exported` is false unless declared, whereas
-     * the platform (before API 31) treats a component with an intent filter as exported; it does
-     * not affect resolution here.
+     * <receiver> elements, with their intent filters. `exported` follows the platform's default
+     * ([defaultExported]): an explicit `android:exported` wins; otherwise a receiver with an intent
+     * filter is exported only for an app targeting below API 31. It is not just informational:
+     * [com.mikimn.apkloader.dcl.ReceiverRegistry] uses it to decide who may send to the receiver.
      */
     fun parseReceivers(): List<Pair<ActivityInfo, List<IntentFilter>>> {
         receivers?.let { return it }
@@ -167,18 +168,23 @@ class AndroidManifestReader(private val baseDir: File, private val inputStream: 
             val info = ActivityInfo()
             info.applicationInfo = appInfo
             info.packageName = appInfo.packageName
+            var declaredExported: Boolean? = null
             for (j in 0 until node.attributes.length) {
                 val attr = node.attributes.item(j)
                 if (attr.localName == "name") {
                     info.name = attr.nodeValue
                 } else if (attr.localName == "exported") {
-                    info.exported = attr.nodeValue.toBoolean()
+                    declaredExported = parseBool(attr.nodeValue)
                 } else if (attr.localName == "enabled") {
                     info.enabled = attr.nodeValue != "false"
+                } else if (attr.localName == "permission") {
+                    info.permission = attr.nodeValue // required of whoever sends it a broadcast
                 }
             }
             info.metaData = parseMetaData(node)
-            info to parseIntentFilters(node)
+            val filters = parseIntentFilters(node)
+            info.exported = defaultExported(declaredExported, filters.isNotEmpty(), appInfo.targetSdkVersion)
+            info to filters
         }
         receivers = result
         return result

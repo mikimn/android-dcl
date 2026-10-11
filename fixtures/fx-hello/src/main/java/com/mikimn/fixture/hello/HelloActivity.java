@@ -1,6 +1,7 @@
 package com.mikimn.fixture.hello;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.widget.TextView;
 import com.mikimn.fixture.common.Probe;
@@ -9,6 +10,9 @@ import com.mikimn.fixture.common.Probe;
 public class HelloActivity extends Activity {
     static final String CHANNEL = "fx-hello";
 
+    // The implicit broadcast below is the point (it exercises delivery by action to a non-exported
+    // receiver of a loaded app), so the lint check against it does not apply.
+    @android.annotation.SuppressLint("UnsafeImplicitIntentLaunch")
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Probe.log(this, CHANNEL, "onCreate");
@@ -24,6 +28,11 @@ public class HelloActivity extends Activity {
         Probe.value(this, CHANNEL, "intent.package", launch.getComponent() == null ? null : launch.getComponent().getPackageName());
         Probe.value(this, CHANNEL, "intent.hostExtras",
             launch.hasExtra("activityClassName") || launch.hasExtra("apkAssetFileName") || launch.hasExtra("loadedApkName"));
+        // Broadcasts to our own receiver: explicit (by class), implicit (by action) and restricted to
+        // our own package. The system can't resolve any of them for a loaded app without help.
+        sendBroadcast(new Intent(this, HelloReceiver.class).putExtra("via", "explicit"));
+        sendBroadcast(new Intent("fx.hello.PING").putExtra("via", "implicit"));
+        sendBroadcast(new Intent("fx.hello.PING").setPackage("com.mikimn.fixture.hello").putExtra("via", "package"));
         // What this app sees when it checks its own identity (anti-tamper / installer checks).
         try {
             android.content.pm.PackageManager pm = getPackageManager();

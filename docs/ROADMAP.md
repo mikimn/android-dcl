@@ -19,7 +19,7 @@ signing (documented for completeness; likely won't fix).
 | R9 | #21 | 2 | [Fix ContentProvider initialization order and context](#r9) | open |
 | R10 | #22 | 2 | [Support multiple loaded APKs concurrently](#r10) | open |
 | R11 | #23 | 3 | [Services: in-process Service lifecycle via a proxy service pool](#r11) | open |
-| R12 | #24 | 3 | [Register manifest-declared broadcast receivers](#r12) | open |
+| R12 | #24 | 3 | [Register manifest-declared broadcast receivers](#r12) | done (process-alive delivery; dead-process delivery is R13) |
 | R13 | #25 | 3 | [Rewrite PendingIntents (notifications, alarms, shortcuts) to proxy components](#r13) | open |
 | R14 | #26 | 3 | [Support android:process multi-process components](#r14) | open |
 | R15 | #27 | 3 | [Harden hidden-API reflection across Android versions](#r15) | open |
