@@ -44,4 +44,15 @@ class HostedServicesTest {
         // the client got the loaded service's own Binder, usable in-process
         assertThat(probe.valueOf("service.bound.answer")).isEqualTo("42")
     }
+
+    // stopSelf() builds the ComponentName from the service's own context and must reach the slot's record.
+    @Test fun aServiceThatCallsStopSelfIsActuallyStopped() {
+        target.startActivity(
+            DCLActivity.intentForAPK(target, FixtureApks.install("fx-hello.apk").path)
+                .putExtra("fx.stopself", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        probe.awaitEvent("service.stopSelf")
+        probe.awaitEvent("service.onDestroy")
+        assertThat(probe.events().filter { it.startsWith("service.on") }).containsExactly("service.onCreate", "service.onDestroy").inOrder()
+    }
 }

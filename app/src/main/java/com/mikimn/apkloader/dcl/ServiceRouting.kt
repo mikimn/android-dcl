@@ -5,7 +5,7 @@ import android.content.Intent
 
 /**
  * Retargets an outgoing service `Intent` (`startService`, `bindService`, `stopService`) at a host
- * proxy slot when it names a service of a loaded APK, which the system could not resolve (it is not
+ * proxy slot (on a copy: see [Route.Rewritten]) when it names a service of a loaded APK, which the system could not resolve (it is not
  * in the host manifest). Pure, so it is unit-testable. The class/APK pair is recorded with the slot
  * ([ServiceSlots]); [DCLService] reads it back from there, since the system creates the service
  * with no intent. The extras also carry the real class and APK, for diagnostics.
@@ -17,8 +17,8 @@ object ServiceRouting {
         /** Not a loaded app's service: leave the intent alone. */
         object None : Route()
 
-        /** Retargeted at [slot] (already applied to the intent). */
-        data class Rewritten(val className: String, val slot: Int) : Route()
+        /** Retargeted at [slot]: use [intent], a copy; the caller's own Intent is never modified. */
+        data class Rewritten(val className: String, val slot: Int, val intent: Intent) : Route()
 
         /** A loaded service, but every proxy slot is taken: the intent is left alone and will fail as before. */
         data class NoFreeSlot(val className: String) : Route()
@@ -48,9 +48,10 @@ object ServiceRouting {
             apkName = apk
         }
         val slot = slots.slotFor(className, apkName) ?: return Route.NoFreeSlot(className)
-        intent.putExtra(KEY_SERVICE_CLASS, className)
-        intent.putExtra(DCLActivity.KEY_LOADED_APK_NAME, apkName)
-        intent.component = ComponentName(hostPackage, DCLServiceProxyPool.className(slot))
-        return Route.Rewritten(className, slot)
+        val rewritten = Intent(intent)
+            .putExtra(KEY_SERVICE_CLASS, className)
+            .putExtra(DCLActivity.KEY_LOADED_APK_NAME, apkName)
+            .setComponent(ComponentName(hostPackage, DCLServiceProxyPool.className(slot)))
+        return Route.Rewritten(className, slot, rewritten)
     }
 }

@@ -22,6 +22,10 @@ public class HelloService extends Service {
         Probe.value(this, "fx-hello", "service.start", intent.getStringExtra("via") + ":" + startId);
         Probe.value(this, "fx-hello", "service.start.component", intent.getComponent() == null ? null : intent.getComponent().getClassName());
         Probe.value(this, "fx-hello", "service.start.routingExtras", intent.hasExtra("dclServiceClass") || intent.hasExtra("loadedApkName"));
+        if ("stopSelf".equals(intent.getStringExtra("via"))) {
+            Probe.log(this, "fx-hello", "service.stopSelf");
+            stopSelf();
+        }
         return START_NOT_STICKY;
     }
 

@@ -44,10 +44,20 @@ class DCLService : Service() {
             stopSelf()
             return
         }
+        // An installed app that was updated or removed since the assignment was recorded: its APK path is gone.
+        if (t.apkName.startsWith("/") && !java.io.File(t.apkName).exists()) {
+            Log.w(TAG, "APK ${t.apkName} of service ${t.className} no longer exists; dropping its slot")
+            ServiceSlotsHolder.get()?.release(t)
+            stopSelf()
+            return
+        }
+        ServiceSlotsHolder.get()?.markRunning(t.slot)
         try {
             shadow = createShadow(t).also { it.onCreate() }
         } catch (e: Throwable) {
             // A loaded service that can't be created must not take the host process down.
+            // (Service.attach is hidden and positional: a signature mismatch on this Android version, SDK
+            // ${android.os.Build.VERSION.SDK_INT}, lands here too; verified so far on API 30 and 36.)
             Log.e(TAG, "Loaded service ${t.className} failed to start", e)
             shadow = null
             stopSelf()
@@ -127,6 +137,7 @@ class DCLService : Service() {
             Log.e(TAG, "Loaded service ${shadowComponent?.className} failed in onDestroy", e)
         }
         shadow = null
+        target?.let { ServiceSlotsHolder.get()?.markStopped(it.slot) }
         super.onDestroy()
     }
 

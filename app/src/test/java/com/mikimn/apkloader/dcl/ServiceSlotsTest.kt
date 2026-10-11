@@ -8,7 +8,8 @@ class ServiceSlotsTest {
     private class MemoryStore(initial: List<Assignment> = emptyList()) : ServiceSlots.Store {
         val data = initial.toMutableList()
         override fun all(): List<Assignment> = data.toList()
-        override fun put(assignment: Assignment) { data.removeAll { it.className == assignment.className }; data.add(assignment) }
+        override fun put(assignment: Assignment) { data.removeAll { it.className == assignment.className && it.apkName == assignment.apkName }; data.add(assignment) }
+        override fun remove(assignment: Assignment) { data.remove(assignment) }
     }
 
     @Test fun eachClassGetsItsOwnSlotAndKeepsIt() {
@@ -20,12 +21,56 @@ class ServiceSlotsTest {
         assertThat(slots.slotFor("b.B", "/apk/one")).isEqualTo(b)
     }
 
-    @Test fun twoClassesNeverShareASlotAndAFullPoolReturnsNull() {
+    @Test fun twoLiveServicesNeverShareASlotAndAPoolOfRunningServicesReturnsNull() {
         val slots = ServiceSlots(MemoryStore(), size = 3)
-        val taken = listOf("a.A", "b.B", "c.C").map { slots.slotFor(it, "/apk")!! }
+        val taken = listOf("a.A", "b.B", "c.C").map { slots.slotFor(it, "/apk")!!.also(slots::markRunning) }
         assertThat(taken.toSet()).hasSize(3)
         assertThat(slots.slotFor("d.D", "/apk")).isNull()
         assertThat(slots.slotFor("a.A", "/apk")).isEqualTo(taken[0]) // existing assignments are unaffected
+    }
+
+    // Library services share class names across apps: they must not be routed to the first app's APK.
+    @Test fun theSameClassNameInTwoApksGetsTwoAssignments() {
+        val slots = ServiceSlots(MemoryStore(), size = 4)
+        val a = slots.slotFor("androidx.work.impl.background.systemjob.SystemJobService", "/apk/a")!!
+        val b = slots.slotFor("androidx.work.impl.background.systemjob.SystemJobService", "/apk/b")!!
+        assertThat(a).isNotEqualTo(b)
+        assertThat(slots.assignmentOf(a)!!.apkName).isEqualTo("/apk/a")
+        assertThat(slots.assignmentOf(b)!!.apkName).isEqualTo("/apk/b")
+    }
+
+    @Test fun whenFullTheLeastRecentlyUsedStoppedAssignmentIsReclaimed() {
+        val store = MemoryStore()
+        val slots = ServiceSlots(store, size = 3)
+        val a = slots.slotFor("a.A", "/apk")!!
+        val b = slots.slotFor("b.B", "/apk")!!
+        val c = slots.slotFor("c.C", "/apk")!!
+        slots.markRunning(a) // a is the oldest but running; b is the oldest stopped one
+        slots.slotFor("c.C", "/apk") // touching c keeps it recent
+        val d = slots.slotFor("d.D", "/apk")
+        assertThat(d).isEqualTo(b)
+        assertThat(slots.assignmentOf(a)!!.className).isEqualTo("a.A")
+        assertThat(slots.assignmentOf(c)!!.className).isEqualTo("c.C")
+        assertThat(store.all().map { it.className }).containsExactly("a.A", "c.C", "d.D")
+    }
+
+    @Test fun stoppedServicesBecomeReclaimableAgain() {
+        val slots = ServiceSlots(MemoryStore(), size = 1)
+        val a = slots.slotFor("a.A", "/apk")!!
+        slots.markRunning(a)
+        assertThat(slots.slotFor("b.B", "/apk")).isNull()
+        slots.markStopped(a)
+        assertThat(slots.slotFor("b.B", "/apk")).isEqualTo(a)
+    }
+
+    @Test fun releasingAnAssignmentFreesItsSlotAndTheStore() {
+        val store = MemoryStore()
+        val slots = ServiceSlots(store, size = 1)
+        val slot = slots.slotFor("a.A", "/gone.apk")!!
+        slots.release(slots.assignmentOf(slot)!!)
+        assertThat(slots.assignmentOf(slot)).isNull()
+        assertThat(store.all()).isEmpty()
+        assertThat(slots.slotFor("b.B", "/apk")).isEqualTo(slot)
     }
 
     // The system creates (and restarts) a service with no intent: the slot alone must say what it hosts.

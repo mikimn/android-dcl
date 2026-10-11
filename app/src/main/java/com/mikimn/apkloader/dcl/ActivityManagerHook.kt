@@ -75,14 +75,19 @@ object ActivityManagerHook {
 
         private fun rewriteServiceIntents(args: Array<out Any?>) {
             val slots = ServiceSlotsHolder.get() ?: return
-            for (intent in args.filterIsInstance<Intent>()) {
+            for (i in args.indices) {
+                val intent = args[i] as? Intent ?: continue
                 when (val route = ServiceRouting.route(
                     intent, hostPackageName, slots,
                     apkNameOfClass = { loader.ownerOf(it)?.name },
                     resolveByPackage = { resolveServiceByPackage(it) }
                 )) {
-                    is ServiceRouting.Route.Rewritten ->
-                        Log.i(TAG, "[Rewrite] service ${route.className} -> ${intent.component?.className}")
+                    is ServiceRouting.Route.Rewritten -> {
+                        // The caller's own Intent stays untouched; the system gets the rewritten copy.
+                        @Suppress("UNCHECKED_CAST")
+                        (args as Array<Any?>)[i] = route.intent
+                        Log.i(TAG, "[Rewrite] service ${route.className} -> ${route.intent.component?.className}")
+                    }
                     is ServiceRouting.Route.NoFreeSlot ->
                         Log.e(TAG, "No free service proxy slot for ${route.className}; it will not start")
                     ServiceRouting.Route.None -> Unit

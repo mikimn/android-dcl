@@ -21,6 +21,7 @@ class ServiceRoutingTest {
         val data = mutableListOf<ServiceSlots.Assignment>()
         override fun all(): List<ServiceSlots.Assignment> = data.toList()
         override fun put(assignment: ServiceSlots.Assignment) { data.add(assignment) }
+        override fun remove(assignment: ServiceSlots.Assignment) { data.remove(assignment) }
     }
 
     private fun route(
@@ -39,12 +40,17 @@ class ServiceRoutingTest {
         val result = route(intent, slots)
 
         val slot = slots.slotFor("com.example.loaded.Sync", apk)!!
-        assertThat(result).isEqualTo(Route.Rewritten("com.example.loaded.Sync", slot))
-        assertThat(intent.component).isEqualTo(ComponentName(host, DCLServiceProxyPool.className(slot)))
-        assertThat(intent.getStringExtra(ServiceRouting.KEY_SERVICE_CLASS)).isEqualTo("com.example.loaded.Sync")
-        assertThat(intent.getStringExtra(DCLActivity.KEY_LOADED_APK_NAME)).isEqualTo(apk)
-        assertThat(intent.action).isEqualTo("some.ACTION")
-        assertThat(intent.getIntExtra("keep", 0)).isEqualTo(1)
+        val rewritten = (result as Route.Rewritten).intent
+        assertThat(result.slot).isEqualTo(slot)
+        assertThat(rewritten.component).isEqualTo(ComponentName(host, DCLServiceProxyPool.className(slot)))
+        assertThat(rewritten.getStringExtra(ServiceRouting.KEY_SERVICE_CLASS)).isEqualTo("com.example.loaded.Sync")
+        assertThat(rewritten.getStringExtra(DCLActivity.KEY_LOADED_APK_NAME)).isEqualTo(apk)
+        assertThat(rewritten.action).isEqualTo("some.ACTION")
+        assertThat(rewritten.getIntExtra("keep", 0)).isEqualTo(1)
+        // the caller's own Intent is not modified
+        assertThat(intent.component).isEqualTo(ComponentName(loadedPkg, "com.example.loaded.Sync"))
+        assertThat(intent.hasExtra(ServiceRouting.KEY_SERVICE_CLASS)).isFalse()
+        assertThat(intent.hasExtra(DCLActivity.KEY_LOADED_APK_NAME)).isFalse()
         // the slot knows what it hosts, which is how DCLService finds out (the system gives it no intent)
         assertThat(slots.assignmentOf(slot)?.apkName).isEqualTo(apk)
     }
@@ -71,19 +77,21 @@ class ServiceRoutingTest {
 
     @Test fun aPackageRestrictedActionIsResolvedAgainstTheLoadedManifest() {
         val intent = Intent("com.example.SYNC").setPackage(loadedPkg)
-        assertThat(route(intent) { "com.example.loaded.Sync" to apk }).isInstanceOf(Route.Rewritten::class.java)
-        assertThat(intent.component!!.packageName).isEqualTo(host)
-        assertThat(intent.getStringExtra(ServiceRouting.KEY_SERVICE_CLASS)).isEqualTo("com.example.loaded.Sync")
-        assertThat(intent.action).isEqualTo("com.example.SYNC")
+        val rewritten = (route(intent) { "com.example.loaded.Sync" to apk } as Route.Rewritten).intent
+        assertThat(rewritten.component!!.packageName).isEqualTo(host)
+        assertThat(rewritten.getStringExtra(ServiceRouting.KEY_SERVICE_CLASS)).isEqualTo("com.example.loaded.Sync")
+        assertThat(rewritten.action).isEqualTo("com.example.SYNC")
+        assertThat(intent.component).isNull()
 
         val unresolved = Intent("com.example.NOPE").setPackage(loadedPkg)
         assertThat(route(unresolved)).isEqualTo(Route.None)
         assertThat(unresolved.component).isNull()
     }
 
-    @Test fun whenEverySlotIsTakenTheIntentIsLeftAloneAndReported() {
+    @Test fun whenEverySlotHostsARunningServiceTheIntentIsLeftAloneAndReported() {
         val slots = ServiceSlots(MemoryStore(), size = 1)
         route(Intent().setComponent(ComponentName(loadedPkg, "com.example.loaded.A")), slots)
+        slots.markRunning(0) // a running service's slot is never reclaimed
         val b = Intent().setComponent(ComponentName(loadedPkg, "com.example.loaded.B"))
         assertThat(route(b, slots)).isEqualTo(Route.NoFreeSlot("com.example.loaded.B"))
         assertThat(b.component).isEqualTo(ComponentName(loadedPkg, "com.example.loaded.B"))

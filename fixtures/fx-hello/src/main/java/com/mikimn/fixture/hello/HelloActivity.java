@@ -36,6 +36,11 @@ public class HelloActivity extends Activity {
         sendBroadcast(new Intent(this, HelloReceiver.class).putExtra("via", "explicit"));
         sendBroadcast(new Intent("fx.hello.PING").putExtra("via", "implicit"));
         sendBroadcast(new Intent("fx.hello.PING").setPackage("com.mikimn.fixture.hello").putExtra("via", "package"));
+        if (getIntent().getBooleanExtra("fx.stopself", false)) {
+            // The service stops itself (stopSelf) instead of being stopped by its client.
+            startService(new Intent(this, HelloService.class).putExtra("via", "stopSelf"));
+            return;
+        }
         // Our own service: started, bound, then unbound and stopped again a second later.
         final Intent svc = new Intent(this, HelloService.class);
         startService(svc.putExtra("via", "start"));
