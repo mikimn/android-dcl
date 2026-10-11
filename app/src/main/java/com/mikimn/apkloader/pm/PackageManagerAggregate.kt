@@ -4,8 +4,10 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
+import android.content.pm.InstallSourceInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.PackageManager.NameNotFoundException
 import android.content.pm.ProviderInfo
 import android.content.pm.ResolveInfo
 import android.content.pm.ServiceInfo
@@ -195,6 +197,63 @@ class PackageManagerAggregate(base: PackageManager, plugins: Array<PackageManage
     @RequiresApi(33)
     override fun resolveService(p0: Intent, p1: ResolveInfoFlags): ResolveInfo? =
         resolveService(p0, p1.value.toInt())
+
+    private fun ownedByPlugin(packageName: String) = pluginList.any { it.ownsPackage(packageName) }
+
+    /** Raw signing certificates: a loaded package's from its plugin, an installed one's from the platform. */
+    private fun certificatesOf(packageName: String): List<ByteArray>? {
+        for (plugin in pluginList) if (plugin.ownsPackage(packageName)) return plugin.signingCertificates(packageName) ?: emptyList()
+        return try {
+            super.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo
+                ?.apkContentsSigners?.map { it.toByteArray() } ?: emptyList()
+        } catch (_: NameNotFoundException) {
+            null // not installed
+        }
+    }
+
+    // The pre-API-30 installer check many apps still use: a loaded package was installed by nobody.
+    @Suppress("DEPRECATION")
+    override fun getInstallerPackageName(p0: String): String? =
+        if (ownedByPlugin(p0)) null else super.getInstallerPackageName(p0)
+
+    // A loaded app runs in the host's process, so it has the host's uid.
+    override fun getPackageUid(p0: String, p1: Int): Int =
+        if (ownedByPlugin(p0)) Process.myUid() else super.getPackageUid(p0, p1)
+
+    @RequiresApi(33)
+    override fun getPackageUid(p0: String, p1: PackageInfoFlags): Int = getPackageUid(p0, p1.value.toInt())
+
+    // Own-signature checks: does this certificate sign that package? Compared against the platform's
+    // verification of the loaded APK, never forged.
+    override fun hasSigningCertificate(p0: String, p1: ByteArray, p2: Int): Boolean {
+        val certs = if (ownedByPlugin(p0)) certificatesOf(p0) else null
+        return if (certs != null) certs.any { matchesCertificate(it, p1, p2) } else super.hasSigningCertificate(p0, p1, p2)
+    }
+
+    private fun matchesCertificate(cert: ByteArray, expected: ByteArray, type: Int): Boolean =
+        if (type == PackageManager.CERT_INPUT_SHA256) {
+            java.security.MessageDigest.getInstance("SHA-256").digest(cert).contentEquals(expected)
+        } else {
+            cert.contentEquals(expected)
+        }
+
+    override fun checkSignatures(p0: String, p1: String): Int {
+        if (!ownedByPlugin(p0) && !ownedByPlugin(p1)) return super.checkSignatures(p0, p1)
+        val first = certificatesOf(p0) ?: return PackageManager.SIGNATURE_UNKNOWN_PACKAGE
+        val second = certificatesOf(p1) ?: return PackageManager.SIGNATURE_UNKNOWN_PACKAGE
+        return when {
+            first.isEmpty() && second.isEmpty() -> PackageManager.SIGNATURE_NEITHER_SIGNED
+            first.isEmpty() -> PackageManager.SIGNATURE_FIRST_NOT_SIGNED
+            second.isEmpty() -> PackageManager.SIGNATURE_SECOND_NOT_SIGNED
+            first.map { it.toList() }.toSet() == second.map { it.toList() }.toSet() -> PackageManager.SIGNATURE_MATCH
+            else -> PackageManager.SIGNATURE_NO_MATCH
+        }
+    }
+
+    override fun getInstallSourceInfo(p0: String): InstallSourceInfo {
+        for (plugin in pluginList) plugin.getInstallSourceInfo(p0)?.let { return it }
+        return super.getInstallSourceInfo(p0)
+    }
 
     fun addPlugin(plugin: PackageManagerPlugin) {
         pluginList.add(0, plugin)

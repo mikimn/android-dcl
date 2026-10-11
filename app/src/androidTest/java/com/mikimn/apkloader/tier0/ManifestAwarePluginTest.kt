@@ -177,6 +177,89 @@ class ManifestAwarePluginTest {
         assertThat(plugin.queryIntentActivities(view, 0).single().priority).isEqualTo(5)
     }
 
+    // ---- signatures and install source (#17) -------------------------------------------------
+
+    private val loaded by lazy { fx.load("fx-manifest.apk") }
+    private val systemPm get() = fx.targetContext.packageManager
+    private val signingFlags = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+
+    private fun signedPlugin() = ManifestAwarePlugin(loaded.manifestReader!!) {
+        systemPm.getPackageArchiveInfo(loaded.paths!!.apk.path, signingFlags)
+    }
+
+    private fun hex(sig: android.content.pm.Signature) = sig.toByteArray().joinToString("") { "%02x".format(it) }
+
+    @Test fun signingInfoIsWhatThePlatformVerifiesInTheApk() {
+        val expected = systemPm.getPackageArchiveInfo(loaded.paths!!.apk.path, PackageManager.GET_SIGNING_CERTIFICATES)!!
+            .signingInfo!!.apkContentsSigners.map(::hex)
+        assertThat(expected).isNotEmpty() // the fixture is debug-signed
+
+        val info = signedPlugin().getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES)
+        assertThat(info.signingInfo!!.apkContentsSigners.map(::hex)).containsExactlyElementsIn(expected)
+        assertThat(info.signingInfo!!.hasMultipleSigners()).isFalse()
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun legacySignaturesAreFilledToo() {
+        val info = signedPlugin().getPackageInfo(pkg, PackageManager.GET_SIGNATURES)
+        assertThat(info.signatures).isNotEmpty()
+        assertThat(info.signatures!!.map(::hex)).containsExactlyElementsIn(
+            systemPm.getPackageArchiveInfo(loaded.paths!!.apk.path, PackageManager.GET_SIGNATURES)!!.signatures!!.map(::hex)
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun signaturesAreOnlyReturnedWhenAskedFor() {
+        val info = signedPlugin().getPackageInfo(pkg, 0)
+        assertThat(info.signingInfo).isNull()
+        assertThat(info.signatures).isNull()
+    }
+
+    @Test fun theArchiveIsOnlyReadLazilyAndAtMostOnce() {
+        var reads = 0
+        val p = ManifestAwarePlugin(loaded.manifestReader!!) { reads++; systemPm.getPackageArchiveInfo(loaded.paths!!.apk.path, signingFlags) }
+        p.getPackageInfo(pkg, 0)
+        assertThat(reads).isEqualTo(0)
+        p.getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES)
+        p.getPackageInfo(pkg, PackageManager.GET_SIGNING_CERTIFICATES)
+        assertThat(reads).isEqualTo(1)
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun noProviderOrAFailingProviderMeansUnknownNotAnError() {
+        for (p in listOf(
+            ManifestAwarePlugin(loaded.manifestReader!!),
+            ManifestAwarePlugin(loaded.manifestReader!!) { error("archive unreadable") },
+        )) {
+            val info = p.getPackageInfo(pkg, signingFlags)
+            assertThat(info.signingInfo).isNull()
+            assertThat(info.signatures).isNull()
+            assertThat(info.packageName).isEqualTo(pkg) // the rest of the answer is unaffected
+        }
+    }
+
+    // The same "unknown, not an error" through the aggregate that apps actually call.
+    @Suppress("DEPRECATION")
+    @Test fun aFailingArchiveReadLeavesSigningFieldsUnsetThroughTheAggregateToo() {
+        val failing = ManifestAwarePlugin(loaded.manifestReader!!) { error("archive unreadable") }
+        val agg = com.mikimn.apkloader.pm.PackageManagerAggregate(systemPm, arrayOf(failing))
+        val info = agg.getPackageInfo(pkg, signingFlags)
+        assertThat(info.packageName).isEqualTo(pkg)
+        assertThat(info.signingInfo).isNull()
+        assertThat(info.signatures).isNull()
+        // and an unknown certificate set is "unsigned", never a crash
+        assertThat(agg.checkSignatures(pkg, pkg)).isEqualTo(PackageManager.SIGNATURE_NEITHER_SIGNED)
+    }
+
+    @Test fun installSourceIsAnHonestNoInstallerForTheLoadedPackageOnly() {
+        val source = plugin.getInstallSourceInfo(pkg)
+        assertThat(source).isNotNull()
+        assertThat(source!!.installingPackageName).isNull()
+        assertThat(source.originatingPackageName).isNull()
+        assertThat(source.initiatingPackageName).isNull() // never claims a store such as com.android.vending
+        assertThat(plugin.getInstallSourceInfo("some.other.pkg")).isNull()
+    }
+
     @Test fun launchIntentForPackage() {
         val intent = plugin.getLaunchIntentForPackage(pkg)!!
         assertThat(intent.action).isEqualTo(Intent.ACTION_MAIN)

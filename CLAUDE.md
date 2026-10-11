@@ -108,7 +108,9 @@ and delegates `loadClass` across every APK it has loaded, falling back to the ho
   `PlayServicesBlockingPackageManager` (pretends GMS isn't installed, whitelists `AdActivity`) as
   the base, plus `pm.DefaultPackageManagerPlugin` (patches Firebase's `ComponentDiscoveryService`
   metadata).
-- `apk.ManifestAwarePlugin` answers activity/service/provider/application info and a minimal
+- `apk.ManifestAwarePlugin` answers activity/service/provider/receiver/application info, package info (version,
+  permissions, and signatures/signing info read from the persisted APK by the platform), intent queries and
+  an honest "no installer" `getInstallSourceInfo`; before it, it answered activity/service/provider/application info and a minimal
   action-only `resolveActivity` by parsing the loaded APK's binary `AndroidManifest.xml` via
   `apk.AndroidManifestReader` (uses the `AXML` library). `DCLActivity.onCreate` registers one per
   loaded APK.
@@ -167,7 +169,9 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
 - All loaded apps share the host's uid and granted permissions. Private storage is per package: the
   shadow Application/Activity and loaded providers get a `DCLContext(virtualPackage = ...)` whose
   storage APIs resolve to `<hostDataDir>/virtual/<package>/` (`VirtualDataDirs`; SharedPreferences by
-  name prefix). Don't pass the host's own context to loaded code, and keep `mBase` out of any
+  name prefix); the same context reports the loaded APK's own paths (`getPackageCodePath()`,
+  `getPackageResourcePath()`, `getApplicationInfo().sourceDir`/`splitSourceDirs`/`nativeLibraryDir`,
+  from `LoadedApk.paths`). Don't pass the host's own context to loaded code, and keep `mBase` out of any
   `FieldMapper.copy` between host and shadow objects. Apps hardcoding `/data/data/<pkg>` still miss. This isolates loaded apps from each other by
   accident; it is not a security boundary (same uid, same process), but package names and file/dir
   names are validated so paths can't be steered outside `virtual/<package>/`.

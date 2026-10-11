@@ -3,6 +3,7 @@ package com.mikimn.apkloader.dcl
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.util.Log
 import com.mikimn.apkloader.apk.LoadedApk
 import com.mikimn.apkloader.apk.ManifestAwarePlugin
@@ -37,8 +38,21 @@ object ApkLoading {
 
         val loadedApk = loader.addApkFile(apkName, apkData, context.resources)
 
-        (context.packageManager as? PackageManagerAggregate)
-            ?.addPlugin(ManifestAwarePlugin(loadedApk.manifestReader!!))
+        // Resolved once, here: the plugin lives in the process-wide aggregate, so a lambda that captured
+        // `context` (a DCLActivity on the DCLActivity.loadApk path) would keep a destroyed Activity alive.
+        val packageManager = context.applicationContext.packageManager
+        (packageManager as? PackageManagerAggregate)
+            ?.addPlugin(
+                ManifestAwarePlugin(loadedApk.manifestReader!!) {
+                    // Only the platform can verify an APK's signing data, from the persisted copy.
+                    loadedApk.paths?.let { paths ->
+                        @Suppress("DEPRECATION")
+                        packageManager.getPackageArchiveInfo(
+                            paths.apk.path, PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
+                        )
+                    }
+                }
+            )
 
         // Implicit broadcasts for the app's manifest receivers (explicit ones are rewritten by
         // ActivityManagerHook). Best effort: never fail the load over a receiver.
