@@ -14,7 +14,7 @@ signing (documented for completeness; likely won't fix).
 | R4 | #16 | 1 | [Survive process death: reload the APK when a proxy activity is restored](#r4) | done (verified on device with OnePlus Notes after #50) |
 | R5 | #17 | 2 | [Complete PackageManager answers for loaded packages](#r5) | done |
 | R6 | #18 | 2 | [Per-package data directory isolation](#r6) | done |
-| R7 | #19 | 2 | [Point ApplicationInfo paths at the loaded APK and use a file-backed dex loader](#r7) | partial: file-backed loader + `ApplicationInfo` paths done; `Context.getPackageCodePath()` now unblocked by the per-package context (#18) |
+| R7 | #19 | 2 | [Point ApplicationInfo paths at the loaded APK and use a file-backed dex loader](#r7) | done |
 | R8 | #20 | 2 | [Honor launchMode, flags and per-activity attributes in proxy activities](#r8) | partial: launchMode pools, configChanges, orientation, softInputMode, excludeFromRecents done; taskAffinity, documentLaunchMode, resizeableActivity open |
 | R9 | #21 | 2 | [Fix ContentProvider initialization order and context](#r9) | open |
 | R10 | #22 | 2 | [Support multiple loaded APKs concurrently](#r10) | open |
