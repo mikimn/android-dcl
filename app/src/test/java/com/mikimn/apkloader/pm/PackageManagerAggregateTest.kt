@@ -221,4 +221,74 @@ class PackageManagerAggregateTest {
         assertThat(agg.getLaunchIntentForPackage("x.pkg")?.action).isEqualTo("launch-one")
         assertThat(agg.getLaunchIntentForPackage("no.such.pkg.anywhere")).isEqualTo(base.getLaunchIntentForPackage("no.such.pkg.anywhere"))
     }
+
+    // --- install source ---
+
+    @Test fun installSourceComesFromThePluginForItsOwnPackage() {
+        // InstallSourceInfo's constructor is hidden; Robolectric runs the real framework class.
+        val ctor = android.content.pm.InstallSourceInfo::class.java.declaredConstructors.maxByOrNull { it.parameterCount }!!
+        ctor.isAccessible = true
+        val own = ctor.newInstance(*ctor.parameterTypes.map { if (it == Int::class.javaPrimitiveType) 0 else null }.toTypedArray())
+            as android.content.pm.InstallSourceInfo
+        val plugin = object : PackageManagerPlugin by FakePlugin("x.pkg", "x") {
+            override fun getInstallSourceInfo(packageName: String) = if (packageName == "x.pkg") own else null
+        }
+        assertThat(aggregate(plugin).getInstallSourceInfo("x.pkg")).isSameInstanceAs(own)
+    }
+
+    @Test fun installSourceForAnUnknownPackageStillFailsLikeThePlatform() {
+        assertThrows(PackageManager.NameNotFoundException::class.java) {
+            aggregate(FakePlugin("a.pkg", "a")).getInstallSourceInfo("nope.nope.nope")
+        }
+    }
+
+    // --- identity checks for a loaded package (installer, uid, signatures) ---
+
+    private val certA = byteArrayOf(1, 2, 3)
+    private val certB = byteArrayOf(9, 9, 9)
+
+    private fun owning(pkg: String, vararg certs: ByteArray) = object : PackageManagerPlugin by FakePlugin(pkg, pkg) {
+        override fun ownsPackage(packageName: String) = packageName == pkg
+        override fun signingCertificates(packageName: String) = if (packageName == pkg) certs.toList() else null
+    }
+
+    @Test fun aLoadedPackageHasNoInstallerAndTheHostsUid() {
+        val agg = aggregate(owning("x.pkg", certA))
+        @Suppress("DEPRECATION")
+        assertThat(agg.getInstallerPackageName("x.pkg")).isNull()
+        assertThat(agg.getPackageUid("x.pkg", 0)).isEqualTo(android.os.Process.myUid())
+        assertThat(agg.getPackageUid("x.pkg", PackageManager.PackageInfoFlags.of(0))).isEqualTo(android.os.Process.myUid())
+    }
+
+    @Test fun otherPackagesStillGoToThePlatform() {
+        val agg = aggregate(owning("x.pkg", certA))
+        @Suppress("DEPRECATION")
+        assertThat(agg.getInstallerPackageName(hostPkg)).isEqualTo(base.getInstallerPackageName(hostPkg))
+        assertThat(agg.getPackageUid(hostPkg, 0)).isEqualTo(base.getPackageUid(hostPkg, 0))
+        assertThrows(PackageManager.NameNotFoundException::class.java) { agg.getPackageUid("nope.nope.nope", 0) }
+    }
+
+    @Test fun hasSigningCertificateComparesTheRawAndTheSha256Form() {
+        val agg = aggregate(owning("x.pkg", certA))
+        assertThat(agg.hasSigningCertificate("x.pkg", certA, PackageManager.CERT_INPUT_RAW_X509)).isTrue()
+        assertThat(agg.hasSigningCertificate("x.pkg", certB, PackageManager.CERT_INPUT_RAW_X509)).isFalse()
+        val sha = java.security.MessageDigest.getInstance("SHA-256").digest(certA)
+        assertThat(agg.hasSigningCertificate("x.pkg", sha, PackageManager.CERT_INPUT_SHA256)).isTrue()
+        assertThat(agg.hasSigningCertificate("x.pkg", certA, PackageManager.CERT_INPUT_SHA256)).isFalse() // raw is not a digest
+    }
+
+    @Test fun checkSignaturesComparesLoadedPackagesCertificates() {
+        val agg = aggregate(owning("x.pkg", certA), owning("same.pkg", certA), owning("other.pkg", certB))
+        assertThat(agg.checkSignatures("x.pkg", "x.pkg")).isEqualTo(PackageManager.SIGNATURE_MATCH)
+        assertThat(agg.checkSignatures("x.pkg", "same.pkg")).isEqualTo(PackageManager.SIGNATURE_MATCH)
+        assertThat(agg.checkSignatures("x.pkg", "other.pkg")).isEqualTo(PackageManager.SIGNATURE_NO_MATCH)
+    }
+
+    @Test fun checkSignaturesReportsUnknownAndUnsignedLikeThePlatform() {
+        val agg = aggregate(owning("x.pkg", certA), owning("unsigned.pkg"))
+        assertThat(agg.checkSignatures("x.pkg", "not.installed.anywhere")).isEqualTo(PackageManager.SIGNATURE_UNKNOWN_PACKAGE)
+        assertThat(agg.checkSignatures("unsigned.pkg", "x.pkg")).isEqualTo(PackageManager.SIGNATURE_FIRST_NOT_SIGNED)
+        assertThat(agg.checkSignatures("x.pkg", "unsigned.pkg")).isEqualTo(PackageManager.SIGNATURE_SECOND_NOT_SIGNED)
+        assertThat(agg.checkSignatures("unsigned.pkg", "unsigned.pkg")).isEqualTo(PackageManager.SIGNATURE_NEITHER_SIGNED)
+    }
 }
