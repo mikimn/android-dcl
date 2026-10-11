@@ -163,7 +163,11 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   receivers therefore work only through (a) dynamic registration of `DCLReceiverProxy` per manifest
   intent filter (`ReceiverRegistry`, implicit broadcasts) and (b) `ActivityManagerHook`, which
   dispatches explicit-component broadcasts in-process on the main thread (`ReceiverRouting`). Not
-  carried over for explicit broadcasts: `goAsync()`/ordered results. Process-alive only.
+  carried over for explicit broadcasts: `goAsync()`/ordered results. Process-alive only. So the host
+  manifest must stay receiver-free: `androidx.profileinstaller.ProfileInstallReceiver` is removed with
+  `tools:node="remove"` (#62; a side effect is that Baseline Profile tooling can no longer trigger it by
+  broadcast, in-app installation via `androidx.startup` is unaffected) and `tier0.HostManifestTest` fails
+  if any `<receiver>` returns.
 - Don't hardcode the host package name: derive it from a `Context` or from the intent being
   rewritten (only the dead `MyContextWrapper` and `scripts/test-apk.sh` still hardcode it).
 - All loaded apps share the host's uid and granted permissions. Private storage is per package: the

@@ -14,6 +14,9 @@ class HostManifestTest {
     // On Android 11 ActivityThread.handleReceiver casts the Application's base context to ContextImpl, which
     // DCLApplication replaces with a DCLContext: the system delivering to *any* host <receiver> kills the
     // process (#62). A dependency that merges one in must be removed with tools:node="remove".
+    // Guards only the variant under test (debug), and only enabled receivers (a disabled one is not returned
+    // without MATCH_DISABLED_COMPONENTS, but cannot be delivered to either). Confirmed to fail with the
+    // removal reverted: it then lists androidx.profileinstaller.ProfileInstallReceiver.
     @Suppress("DEPRECATION") // the int-flag overload is the one that exists below API 33
     @Test fun theHostDeclaresNoManifestReceivers() {
         val target = InstrumentationRegistry.getInstrumentation().targetContext
