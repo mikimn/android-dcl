@@ -178,7 +178,8 @@ class AndroidManifestReaderTest {
     }
 
     @Test fun noServicesOrProvidersGivesEmptyLists() {
-        val r = reader("fx-hello.apk")
+        // (fx-hello declares a service and a receiver of its own for the hosted-component tests)
+        val r = reader("fx-resources.apk")
         assertThat(r.getServices()).isEmpty()
         assertThat(r.getProviders()).isEmpty()
     }

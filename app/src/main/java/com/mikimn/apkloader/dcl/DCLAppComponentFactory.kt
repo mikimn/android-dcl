@@ -98,6 +98,11 @@ class DCLAppComponentFactory : CoreComponentFactory() {
 
     override fun instantiateService(cl: ClassLoader, className: String, intent: Intent?): Service {
         Log.e("DCLAppComponentFactory", "instantiateService($className, $intent)")
+        if (DCLServiceProxyPool.isProxyClassName(className)) {
+            // Host a plain DCLService, which finds its loaded service from its slot (no class named after a
+            // slot exists, as with the activity pool). The intent is null here on Android 11.
+            return super.instantiateService(cl, DCLService::class.java.name, intent)
+        }
         return super.instantiateService(cl, className, intent)
     }
 

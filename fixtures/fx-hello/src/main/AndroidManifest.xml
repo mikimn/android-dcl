@@ -10,6 +10,8 @@
             </intent-filter>
         </activity>
 
+        <service android:name=".HelloService" android:exported="false" />
+
         <!-- Receives an explicit broadcast (by class) and implicit ones (by action) from HelloActivity. -->
         <receiver android:name=".HelloReceiver" android:exported="false">
             <intent-filter>

@@ -975,6 +975,27 @@
         <activity android:name=".dcl.DCLActivityProxySingleInstanceCfg3" android:launchMode="singleInstance" android:exported="false"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|screenLayout|fontScale|uiMode|orientation|screenSize|smallestScreenSize|layoutDirection|colorMode|density|fontWeightAdjustment" />
 
+        <!-- DCLServiceProxyPool: stand-ins for a loaded app's services. ServiceRouting retargets
+             startService/bindService/stopService here; DCLAppComponentFactory.instantiateService turns each
+             into a DCLService driving the real loaded Service. Count must match DCLServiceProxyPool.SIZE
+             (DCLServiceProxyPoolTest checks). -->
+        <service android:name=".dcl.DCLServiceProxy0" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy1" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy2" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy3" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy4" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy5" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy6" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy7" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy8" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy9" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy10" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy11" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy12" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy13" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy14" android:exported="false" />
+        <service android:name=".dcl.DCLServiceProxy15" android:exported="false" />
+
         <activity android:name="com.shazam.android.activities.ConfigurationActivity"
             android:exported="true">
             <intent-filter>

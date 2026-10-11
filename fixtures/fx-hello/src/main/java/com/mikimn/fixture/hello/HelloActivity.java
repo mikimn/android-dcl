@@ -1,6 +1,7 @@
 package com.mikimn.fixture.hello;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.widget.TextView;
@@ -9,6 +10,8 @@ import com.mikimn.fixture.common.Probe;
 /** Tier 0/1: one activity, no custom resources. Records its lifecycle and what it can see. */
 public class HelloActivity extends Activity {
     static final String CHANNEL = "fx-hello";
+
+    private android.content.ServiceConnection serviceConnection;
 
     // The implicit broadcast below is the point (it exercises delivery by action to a non-exported
     // receiver of a loaded app), so the lint check against it does not apply.
@@ -80,6 +83,27 @@ public class HelloActivity extends Activity {
             web.loadDataWithBaseURL(null, "<html><head><title>fx-webview</title></head><body>hi</body></html>", "text/html", "UTF-8", null);
             return;
         }
+        if (getIntent().getBooleanExtra("fx.stopself", false)) {
+            // The service stops itself (stopSelf) instead of being stopped by its client.
+            startService(new Intent(this, HelloService.class).putExtra("via", "stopSelf"));
+            return;
+        }
+        // Our own service: started, bound, then unbound and stopped again a second later.
+        final Intent svc = new Intent(this, HelloService.class);
+        startService(svc.putExtra("via", "start"));
+        serviceConnection = new android.content.ServiceConnection() {
+            @Override public void onServiceConnected(android.content.ComponentName name, android.os.IBinder binder) {
+                Probe.value(HelloActivity.this, CHANNEL, "service.bound.answer", ((HelloService.LocalBinder) binder).answer());
+                new android.os.Handler(getMainLooper()).postDelayed(new Runnable() {
+                    @Override public void run() {
+                        unbindService(serviceConnection);
+                        stopService(svc);
+                    }
+                }, 1000);
+            }
+            @Override public void onServiceDisconnected(android.content.ComponentName name) {}
+        };
+        bindService(new Intent(this, HelloService.class), serviceConnection, Context.BIND_AUTO_CREATE);
         TextView text = new TextView(this);
         text.setText("hello from fx-hello");
         setContentView(text);
