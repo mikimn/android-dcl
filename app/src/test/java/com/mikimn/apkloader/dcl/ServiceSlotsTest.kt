@@ -5,6 +5,10 @@ import com.mikimn.apkloader.dcl.ServiceSlots.Assignment
 import org.junit.Test
 
 class ServiceSlotsTest {
+    private var clock = 0L
+    private fun slotsOf(store: ServiceSlots.Store, size: Int) = ServiceSlots(store, size) { clock }
+    private fun later() { clock += ServiceSlots.PENDING_MS }
+
     private class MemoryStore(initial: List<Assignment> = emptyList()) : ServiceSlots.Store {
         val data = initial.toMutableList()
         override fun all(): List<Assignment> = data.toList()
@@ -41,12 +45,13 @@ class ServiceSlotsTest {
 
     @Test fun whenFullTheLeastRecentlyUsedStoppedAssignmentIsReclaimed() {
         val store = MemoryStore()
-        val slots = ServiceSlots(store, size = 3)
+        val slots = slotsOf(store, 3)
         val a = slots.slotFor("a.A", "/apk")!!
         val b = slots.slotFor("b.B", "/apk")!!
         val c = slots.slotFor("c.C", "/apk")!!
         slots.markRunning(a) // a is the oldest but running; b is the oldest stopped one
         slots.slotFor("c.C", "/apk") // touching c keeps it recent
+        later()
         val d = slots.slotFor("d.D", "/apk")
         assertThat(d).isEqualTo(b)
         assertThat(slots.assignmentOf(a)!!.className).isEqualTo("a.A")
@@ -55,12 +60,31 @@ class ServiceSlotsTest {
     }
 
     @Test fun stoppedServicesBecomeReclaimableAgain() {
-        val slots = ServiceSlots(MemoryStore(), size = 1)
+        val slots = slotsOf(MemoryStore(), 1)
         val a = slots.slotFor("a.A", "/apk")!!
         slots.markRunning(a)
         assertThat(slots.slotFor("b.B", "/apk")).isNull()
         slots.markStopped(a)
+        later()
         assertThat(slots.slotFor("b.B", "/apk")).isEqualTo(a)
+    }
+
+    // A slot is only "running" once the system created the service: until then a fresh assignment is pending.
+    @Test fun aFreshAssignmentIsNotEvictedBeforeItsServiceHadTimeToStart() {
+        val slots = slotsOf(MemoryStore(), 1)
+        val a = slots.slotFor("a.A", "/apk")!!
+        assertThat(slots.slotFor("b.B", "/apk")).isNull() // a's service has not been created yet
+        later()
+        assertThat(slots.slotFor("b.B", "/apk")).isEqualTo(a)
+    }
+
+    // After a process restart nothing is running, but the system may be about to restart a sticky service.
+    @Test fun assignmentsLoadedAtProcessStartAreProtectedForTheStartupWindow() {
+        val store = MemoryStore(listOf(Assignment(0, "a.A", "/apk")))
+        val slots = slotsOf(store, 1)
+        assertThat(slots.slotFor("b.B", "/apk")).isNull()
+        later()
+        assertThat(slots.slotFor("b.B", "/apk")).isEqualTo(0)
     }
 
     @Test fun releasingAnAssignmentFreesItsSlotAndTheStore() {

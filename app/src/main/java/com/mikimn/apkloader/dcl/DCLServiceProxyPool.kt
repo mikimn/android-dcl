@@ -38,8 +38,16 @@ object DCLServiceProxyPool {
  * least-recently-used assignment whose service is not running in this process ([markRunning] /
  * [markStopped], called by [DCLService]) is evicted. [slotFor] returns null only when all
  * [size] slots host a running service.
+ *
+ * A slot is only "running" once [DCLService.onCreate] runs, so an assignment is also protected for
+ * [PENDING_MS] after it is made or used, and after the process starts (a sticky service the system is about
+ * to restart under its old slot, when nothing is running yet): until then it is not evicted.
  */
-class ServiceSlots(private val store: Store, private val size: Int = DCLServiceProxyPool.SIZE) {
+class ServiceSlots(
+    private val store: Store,
+    private val size: Int = DCLServiceProxyPool.SIZE,
+    private val now: () -> Long = System::currentTimeMillis
+) {
     data class Assignment(val slot: Int, val className: String, val apkName: String)
 
     interface Store {
@@ -51,23 +59,25 @@ class ServiceSlots(private val store: Store, private val size: Int = DCLServiceP
     // Insertion order is recency order: a hit re-inserts, so the first entry is the least recently used.
     private val assigned = LinkedHashMap<String, Assignment>().also { map -> store.all().forEach { map[keyOf(it.apkName, it.className)] = it } }
     private val running = HashSet<Int>()
+    private val touched = HashMap<Int, Long>().also { m -> assigned.values.forEach { m[it.slot] = now() } }
 
     private fun keyOf(apkName: String, className: String) = "$apkName|$className"
 
     @Synchronized
     fun slotFor(className: String, apkName: String): Int? {
         val key = keyOf(apkName, className)
-        assigned.remove(key)?.let { assigned[key] = it; return it.slot }
+        assigned.remove(key)?.let { assigned[key] = it; touched[it.slot] = now(); return it.slot }
         val taken = assigned.values.mapTo(HashSet()) { it.slot }
         var slot = (0 until size).firstOrNull { it !in taken }
         if (slot == null) {
-            val victim = assigned.entries.firstOrNull { it.value.slot !in running } ?: return null
+            val victim = assigned.entries.firstOrNull { it.value.slot !in running && now() - (touched[it.value.slot] ?: 0L) >= PENDING_MS } ?: return null
             assigned.remove(victim.key)
             store.remove(victim.value)
             slot = victim.value.slot
         }
         val assignment = Assignment(slot, className, apkName)
         assigned[key] = assignment
+        touched[slot] = now()
         store.put(assignment)
         return slot
     }
@@ -81,6 +91,12 @@ class ServiceSlots(private val store: Store, private val size: Int = DCLServiceP
     fun release(assignment: Assignment) {
         if (assigned.remove(keyOf(assignment.apkName, assignment.className)) != null) store.remove(assignment)
         running.remove(assignment.slot)
+        touched.remove(assignment.slot)
+    }
+
+    companion object {
+        /** How long a fresh or just-used assignment is safe from eviction while its service is being created. */
+        const val PENDING_MS = 30_000L
     }
 
     @Synchronized fun markRunning(slot: Int) { running.add(slot) }
