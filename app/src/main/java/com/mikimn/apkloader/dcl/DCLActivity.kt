@@ -157,7 +157,11 @@ class DCLActivity : ComponentActivity() {
         // The loaded app's own Context: same host services, but private storage under
         // virtual/<package>/ instead of the host's (shared by every loaded app otherwise).
         val shadowContext: Context = appInfo?.packageName?.let { pkg ->
-            DCLContext((baseContext as? ContextWrapper)?.baseContext ?: baseContext, virtualPackage = pkg)
+            DCLContext(
+                (baseContext as? ContextWrapper)?.baseContext ?: baseContext,
+                virtualPackage = pkg,
+                loadedPaths = loadedApk.paths
+            )
         } ?: baseContext
 
         val activityClassName = intent.getStringExtra(KEY_ACTIVITY_CLASS)

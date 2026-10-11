@@ -110,6 +110,11 @@ class LoadedApk(val name: String, private val baseClassLoader: ClassLoader) {
             // split) carries its libs only inside the APK itself.
             val baseApkNativeDir = primaryAbiDir(File(extractedApkDirectory, "lib"))
 
+            // Before any of the APK's classes link: derive the hidden-API exemptions its dex needs.
+            HiddenApiExemptions.applyFor(
+                extractedApkDirectory.listFiles { f -> f.extension == "dex" }?.toList() ?: emptyList()
+            )
+
             loader = buildClassLoader(
                 apkFile,
                 splitApkNativeDirs + listOf(nativeLibsUncompressedDir),
