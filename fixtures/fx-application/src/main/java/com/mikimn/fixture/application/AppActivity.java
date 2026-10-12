@@ -11,5 +11,13 @@ public class AppActivity extends Activity {
         Probe.value(this, FxApplication.CHANNEL, "activity.applicationClass", getApplication().getClass().getName());
         Probe.value(this, FxApplication.CHANNEL, "activity.sameApplication",
                 getApplication() == getApplicationContext());
+        Probe.value(this, FxApplication.CHANNEL, "shared.direct", com.mikimn.fixture.shared.SharedLib.owner());
+        try {
+            // by name through the process class loader, the way the framework resolves classes
+            Probe.value(this, FxApplication.CHANNEL, "shared.byName", Class.forName("com.mikimn.fixture.shared.SharedLib", true, getClassLoader())
+                .getMethod("owner").invoke(null));
+        } catch (Exception e) {
+            Probe.value(this, FxApplication.CHANNEL, "shared.byName", e.toString());
+        }
     }
 }

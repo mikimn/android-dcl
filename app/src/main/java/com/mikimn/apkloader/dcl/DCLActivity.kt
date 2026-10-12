@@ -148,6 +148,7 @@ class DCLActivity : ComponentActivity() {
             )
         }
         hostedApkName = loadedApk.name
+        loader.preferred = loadedApk
         initResourceLoader(loader)
         bContext?.setShadowPackageName(loadedApk.manifestReader!!.getApplicationInfo().packageName)
 
@@ -160,7 +161,8 @@ class DCLActivity : ComponentActivity() {
             DCLContext(
                 (baseContext as? ContextWrapper)?.baseContext ?: baseContext,
                 virtualPackage = pkg,
-                loadedPaths = loadedApk.paths
+                loadedPaths = loadedApk.paths,
+                appClassLoader = loadedApk.loader
             )
         } ?: baseContext
 
@@ -376,6 +378,8 @@ class DCLActivity : ComponentActivity() {
 
     @SuppressLint("MissingSuperCall")
     override fun onResume() {
+        // The app the user is in is the one the framework's by-name class loads most likely mean (#22).
+        (classLoader as? FileTrackingClassLoader)?.let { l -> hostedApkName?.let(l::apkFile)?.let { l.preferred = it } }
         // super.onResume()
         overrideLifecycleCall("onResume")
     }
@@ -471,6 +475,19 @@ class DCLActivity : ComponentActivity() {
         val targetClass = intent.getStringExtra(KEY_ACTIVITY_CLASS)
         val targetApk = intent.getStringExtra(KEY_APK_ASSET_FILE_NAME)
             ?: intent.getStringExtra(KEY_LOADED_APK_NAME)
+        // A launch request for a *different* APK (the launcher screen opening a second app while one is
+        // running) lands here too, since DCLActivity is singleTask. Host it in a fresh instance instead of
+        // dropping it: a standard proxy slot, atop the running app in the same task.
+        val launchedApk = intent.getStringExtra(KEY_APK_ASSET_FILE_NAME)
+        if (launchedApk != null && hostedApkName != null && launchedApk != hostedApkName) {
+            Log.i("DCLActivity", "Hosting $launchedApk in a new instance (this one hosts $hostedApkName)")
+            startActivity(
+                Intent(intent)
+                    .setComponent(ComponentName(this, DCLActivityProxyPool.nextClassName()))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            return
+        }
         val shadow = shadowActivity
         if (shadow == null ||
             (targetClass != null && targetClass != shadow.javaClass.name) ||

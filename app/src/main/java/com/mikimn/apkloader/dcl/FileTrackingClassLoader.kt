@@ -69,7 +69,22 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
     val last: LoadedApk?
         get() = lastLoadedApk
 
+    /**
+     * The APK of the app currently in the foreground. The framework resolves classes by name through this
+     * loader without saying for whom (LayoutInflater, fragment/state restore), and two loaded apps may both
+     * bundle a library (androidx, OkHttp, ...): the foreground app's copy wins, instead of whichever was
+     * loaded first. Best effort: a background thread of another app still gets the foreground app's copy.
+     */
+    @Volatile var preferred: LoadedApk? = null
+
     override fun loadClass(name: String): Class<*> {
+        preferred?.let {
+            try {
+                return it.loadClass(name)
+            } catch (_: ClassNotFoundException) {
+                // not this app's: fall through to the others
+            }
+        }
 //        try {
 //            return baseClassLoader.loadClass(name)
 //        } catch (_: ClassNotFoundException) {
