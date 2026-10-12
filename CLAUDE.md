@@ -140,9 +140,19 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
 - Activities of a loaded APK reached via explicit intents are handled by the ATM hook + proxy
   pool. Other component types (services, receivers, providers reached through the system,
   PendingIntents) are **not** — see `docs/ROADMAP.md`.
-- `DCLContext.shadowPackageName` / `shadowApp` are **companion-object (static) state**, and
-  `ShadowApplication` patches process-global `ActivityThread` fields — only one loaded APK can be
-  "active" at a time. Don't assume concurrent loads work.
+- Several APKs can be loaded in one process (#22, partial), but some state is still process-global:
+  `ShadowApplication` patches `ActivityThread.mInitialApplication` (what `Application.currentApplication()`
+  returns: the most recently created shadow app wins), and `DCLContext.shadowPackageName`/`shadowApp` remain as
+  last-set fallbacks for contexts that were never told which app they belong to. What is per app: a
+  `DCLContext(virtualPackage, appClassLoader)` for the shadow Application/Activity/providers (so
+  `getClassLoader()` is the app's own loader - the process-wide `FileTrackingClassLoader` can answer a
+  by-name lookup only once per name, ART caches it), `getPackageName()` (the APK owning the *calling class*),
+  `getApplicationContext()`, and `LoadedApk.mApplication`, which `ShadowApplication` restores to the host's
+  Application after the shadow one's `onCreate` so other components are not attached to it. Known gaps: two
+  apps bundling the same library still share `FileTrackingClassLoader.ownerOf` (first match) for caller and
+  intent resolution, and `FileTrackingClassLoader.preferred` (the foreground app) only biases process-loader
+  lookups. A launch request for a different APK reaching the running `singleTask` `DCLActivity` is hosted in a
+  new proxy-slot instance (`DCLActivity.onNewIntent`) instead of being dropped.
 - One shadow `Application` per `LoadedApk` (`LoadedApk.shadowApplication`): creating a second one
   per navigation hop breaks apps with path-keyed singletons (e.g. DataStore).
 - A hosted activity's `getIntent()` is a copy of the host activity's real intent pointed at the shadow

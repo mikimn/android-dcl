@@ -15,6 +15,13 @@ import java.lang.reflect.Field
 import java.lang.reflect.InvocationTargetException
 
 object ShadowApplication {
+    // The host's genuine Application and the platform LoadedApk whose mApplication we overwrite while a loaded
+    // app's Application is created and runs onCreate(). That field is what the system hands to every component
+    // it instantiates for the host (makeApplication), so it must go back afterwards or a *different* loaded app
+    // (or the host's own activity) would be attached to this app's Application (#22).
+    private var hostApplication: Application? = null
+    private var hostPackageInfo: Any? = null
+
     private fun fixPackageInfoDependency(context: Context, application: Application) {
         if (context is ContextWrapper) {
             return fixPackageInfoDependency(context.baseContext, application)
@@ -26,7 +33,20 @@ object ShadowApplication {
         val mPackageInfo = fPackageInfo?.get(context)
         val fPackageApplication = mPackageInfo?.javaClass?.tryGetField("mApplication")
         fPackageApplication?.isAccessible = true
+        synchronized(this) {
+            if (hostApplication == null) {
+                hostApplication = fPackageApplication?.get(mPackageInfo) as? Application
+                hostPackageInfo = mPackageInfo
+            }
+        }
         fPackageApplication?.set(mPackageInfo, application)
+    }
+
+    /** Puts the host's own Application back as the platform's, undoing [fixPackageInfoDependency]. */
+    private fun restoreHostApplication() {
+        val (info, host) = synchronized(this) { hostPackageInfo to hostApplication }
+        if (info == null || host == null) return
+        info.javaClass.tryGetField("mApplication")?.apply { isAccessible = true }?.set(info, host)
     }
 
     private fun fixMainThreadDependency(context: Context, application: Application) {
@@ -84,6 +104,8 @@ object ShadowApplication {
             // genuinely, unavoidably fails here regardless of our own virtualization -
             // best effort not to let that early failure take down the whole process.
             Log.e("ShadowApplication", "Application.onCreate() threw, continuing best-effort", e.targetException)
+        } finally {
+            restoreHostApplication()
         }
     }
 }
