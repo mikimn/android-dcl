@@ -26,7 +26,8 @@ class DCLAppComponentFactory : CoreComponentFactory() {
         // return super.instantiateClassLoader(cl, aInfo)
         val defaultClassLoader = super.instantiateClassLoader(cl, aInfo)
         val newClassLoader = FileTrackingClassLoader(defaultClassLoader)
-        FileTrackingClassLoader.process = newClassLoader
+        // Once per process: a second loader would split the loaded APKs between two registries.
+        if (FileTrackingClassLoader.process == null) FileTrackingClassLoader.process = newClassLoader
         Thread.currentThread().contextClassLoader = newClassLoader
         return newClassLoader
         // return BaseDexClassLoader("", null, null, FileTrackingClassLoader(super.instantiateClassLoader(cl, aInfo)))

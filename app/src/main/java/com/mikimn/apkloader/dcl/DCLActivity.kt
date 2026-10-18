@@ -148,7 +148,7 @@ class DCLActivity : ComponentActivity() {
             )
         }
         hostedApkName = loadedApk.name
-        loader.preferred = loadedApk
+        loader.activityCreated(loadedApk)
         initResourceLoader(loader)
         bContext?.setShadowPackageName(loadedApk.manifestReader!!.getApplicationInfo().packageName)
 
@@ -409,7 +409,7 @@ class DCLActivity : ComponentActivity() {
     @SuppressLint("MissingSuperCall")
     override fun onDestroy() {
         // super.onDestroy()
-        (classLoader as? FileTrackingClassLoader)?.let { l -> hostedApkName?.let(l::apkFile)?.let(l::clearPreferred) }
+        (classLoader as? FileTrackingClassLoader)?.let { l -> hostedApkName?.let(l::apkFile)?.let(l::activityDestroyed) }
         overrideLifecycleCall("onDestroy")
     }
 
