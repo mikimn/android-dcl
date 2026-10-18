@@ -7,8 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Build
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 import com.mikimn.apkloader.dcl.DCLActivity
-import com.mikimn.apkloader.reflection.findMethodByName
 import com.mikimn.apkloader.reflection.tryGetValue
 
 object ShadowActivity {
@@ -32,6 +32,15 @@ object ShadowActivity {
         hostOnlyExtras.forEach { removeExtra(it) }
     }
 
+    /** The hidden `Activity.attach`; on releases that kept an older overload around, the one with most parameters. */
+    private fun findAttach(): java.lang.reflect.Method =
+        HiddenApiBypass.getDeclaredMethods(Activity::class.java)
+            .filterIsInstance<java.lang.reflect.Method>()
+            .filter { it.name == "attach" }
+            .maxByOrNull { it.parameterCount }
+            ?.apply { isAccessible = true }
+            ?: error("Activity.attach not found on SDK ${Build.VERSION.SDK_INT}")
+
     fun attachActivity(
         aInfo: ActivityInfo,
         realActivity: Activity,
@@ -39,62 +48,38 @@ object ShadowActivity {
         application: Application? = null,
         baseContext: Context = realActivity.baseContext
     ) {
-        // final void android.app.Activity.attach(
-        //      android.content.Context,
-        //      android.app.ActivityThread,
-        //      android.app.Instrumentation,
-        //      android.os.IBinder,
-        //      int,
-        //      android.app.Application,
-        //      android.content.Intent,
-        //      android.content.pm.ActivityInfo,
-        //      java.lang.CharSequence,
-        //      android.app.Activity,
-        //      java.lang.String,
-        //      android.app.Activity$NonConfigurationInstances,
-        //      android.content.res.Configuration,
-        //      java.lang.String,
-        //      com.android.internal.app.IVoiceInteractor,
-        //      android.view.Window,
-        //      android.view.ViewRootImpl$ActivityConfigCallback,
-        //      android.os.IBinder)
+        // Activity.attach is hidden and its parameter list changes between Android releases, so it is called
+        // by parameter *type* (see AttachArguments), never positionally per API level.
         val activityClass = activity.javaClass
-
-        val parameters = mutableListOf(
-            baseContext,
-            realActivity.tryGetValue("mMainThread"),
-            realActivity.tryGetValue("mInstrumentation"),
-            realActivity.tryGetValue("mToken"),
-            realActivity.tryGetValue("mIdent"),
-            application ?: realActivity.application,
-            shadowIntent(
-                realActivity.intent, aInfo.packageName ?: baseContext.packageName, activityClass,
-                DCLActivity.HOST_ONLY_EXTRAS
-            ),
-            aInfo,
-            null,
-            realActivity.parent,
-            realActivity.tryGetValue("mEmbeddedID"),
-            realActivity.tryGetValue("mLastNonConfigurationInstances"),
-            realActivity.tryGetValue("mCurrentConfig"),
-            realActivity.tryGetValue("mReferrer"),
-            null,
-            realActivity.window,
-            /* activityConfigCallback */ null,
-            realActivity.tryGetValue("mAssistToken")
+        val attach = findAttach()
+        val roles = AttachArguments.rolesFor(
+            attach.parameterTypes.map { it.name },
+            signature = attach.parameterTypes.joinToString(", ") { it.name }
         )
-
-        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.R) {
-            parameters.add(
-                /* initialCallerInfoAccessToken */ null
-            )
+        val intent = shadowIntent(
+            realActivity.intent, aInfo.packageName ?: baseContext.packageName, activityClass,
+            DCLActivity.HOST_ONLY_EXTRAS
+        )
+        val args = AttachArguments.build(roles) { role ->
+            when (role) {
+                AttachArguments.Role.CONTEXT -> baseContext
+                AttachArguments.Role.MAIN_THREAD -> realActivity.tryGetValue("mMainThread")
+                AttachArguments.Role.INSTRUMENTATION -> realActivity.tryGetValue("mInstrumentation")
+                AttachArguments.Role.TOKEN -> realActivity.tryGetValue("mToken")
+                AttachArguments.Role.IDENT -> realActivity.tryGetValue("mIdent")
+                AttachArguments.Role.APPLICATION -> application ?: realActivity.application
+                AttachArguments.Role.INTENT -> intent
+                AttachArguments.Role.ACTIVITY_INFO -> aInfo
+                AttachArguments.Role.PARENT -> realActivity.parent
+                AttachArguments.Role.EMBEDDED_ID -> realActivity.tryGetValue("mEmbeddedID")
+                AttachArguments.Role.NON_CONFIG_INSTANCES -> realActivity.tryGetValue("mLastNonConfigurationInstances")
+                AttachArguments.Role.CONFIGURATION -> realActivity.tryGetValue("mCurrentConfig")
+                AttachArguments.Role.REFERRER -> realActivity.tryGetValue("mReferrer")
+                AttachArguments.Role.WINDOW -> realActivity.window
+                AttachArguments.Role.ASSIST_TOKEN -> realActivity.tryGetValue("mAssistToken")
+                else -> null
+            }
         }
-
-        val mAttach = activityClass.findMethodByName("attach")
-        mAttach?.isAccessible = true
-        mAttach?.invoke(
-            activity,
-            *parameters.toTypedArray()
-        )
+        attach.invoke(activity, *args)
     }
 }

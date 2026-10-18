@@ -22,7 +22,7 @@ signing (documented for completeness; likely won't fix).
 | R12 | #24 | 3 | [Register manifest-declared broadcast receivers](#r12) | done (process-alive delivery; dead-process delivery is R13) |
 | R13 | #25 | 3 | [Rewrite PendingIntents (notifications, alarms, shortcuts) to proxy components](#r13) | open |
 | R14 | #26 | 3 | [Support android:process multi-process components](#r14) | open |
-| R15 | #27 | 3 | [Harden hidden-API reflection across Android versions](#r15) | open |
+| R15 | #27 | 3 | [Harden hidden-API reflection across Android versions](#r15) | partial: `Activity.attach` is called by parameter type (`AttachArguments`, fails loudly on an unknown type); the hardcoded field names (`mMainThread`, `mToken`, ...) and an API 30-36 test matrix remain |
 | R16 | #28 | 4 | [System-bound components (widgets, IME, accessibility, wallpaper, tiles, …)](#r16) | open |
 | R17 | #29 | 5 | [Package/signature-bound Google services (Play Services, Sign-In, FCM, Billing, Integrity)](#r17) | open |
 | R18 | #30 | 5 | [Signature/privileged permissions](#r18) | open |
