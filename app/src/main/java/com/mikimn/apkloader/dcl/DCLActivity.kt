@@ -111,6 +111,25 @@ class DCLActivity : ComponentActivity() {
 
     @SuppressLint("MissingSuperCall")
     override fun onCreate(savedInstanceState: Bundle?) {
+        try {
+            createHosted(savedInstanceState)
+        } catch (t: Throwable) {
+            // A failed start gets no onDestroy: give back the live-activity count it took, or the app's
+            // `preferred` status could never be cleared again.
+            releaseLiveCount()
+            throw t
+        }
+    }
+
+    private var counted = false
+
+    private fun releaseLiveCount() {
+        if (!counted) return
+        counted = false
+        (classLoader as? FileTrackingClassLoader)?.let { l -> hostedApkName?.let(l::apkFile)?.let(l::activityDestroyed) }
+    }
+
+    private fun createHosted(savedInstanceState: Bundle?) {
         StrictMode.setThreadPolicy(
             ThreadPolicy.Builder()
                 .permitAll()
@@ -149,6 +168,7 @@ class DCLActivity : ComponentActivity() {
         }
         hostedApkName = loadedApk.name
         loader.activityCreated(loadedApk)
+        counted = true
         initResourceLoader(loader)
         bContext?.setShadowPackageName(loadedApk.manifestReader!!.getApplicationInfo().packageName)
 
@@ -409,7 +429,7 @@ class DCLActivity : ComponentActivity() {
     @SuppressLint("MissingSuperCall")
     override fun onDestroy() {
         // super.onDestroy()
-        (classLoader as? FileTrackingClassLoader)?.let { l -> hostedApkName?.let(l::apkFile)?.let(l::activityDestroyed) }
+        releaseLiveCount()
         overrideLifecycleCall("onDestroy")
     }
 

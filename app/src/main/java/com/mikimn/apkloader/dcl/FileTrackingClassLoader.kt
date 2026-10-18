@@ -83,6 +83,7 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
      * activity: finishing activity A after navigating to B of the same app must not clear it while B is in front.
      */
     fun activityDestroyed(apk: LoadedApk) {
+        // (a destroy with no matching create also lands on null: the safe direction)
         val left = liveActivities.compute(apk.name) { _, n -> if (n == null || n <= 1) null else n - 1 }
         if (left == null && preferred === apk) preferred = null
     }
