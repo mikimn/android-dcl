@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Debug only: lets `adb shell am start` (scripts/test-apk.sh, manual testing) drive the loader as the
+             shell user. Release builds keep DCLActivity private to the app (#55). -->
+        <activity
+            android:name=".dcl.DCLActivity"
+            android:exported="true"
+            tools:replace="android:exported" />
+    </application>
+</manifest>
