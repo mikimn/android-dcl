@@ -138,8 +138,8 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
 ## Non-obvious invariants when extending this code
 
 - Activities of a loaded APK reached via explicit intents are handled by the ATM hook + proxy
-  pool. Other component types (services, receivers, providers reached through the system,
-  PendingIntents) are **not** — see `docs/ROADMAP.md`.
+  pool. Services, receivers and PendingIntents have their own mechanisms (below); providers reached
+  through the system do not — see `docs/ROADMAP.md`.
 - Several APKs can be loaded in one process (#22, partial), but some state is still process-global:
   `ShadowApplication` patches `ActivityThread.mInitialApplication` (what `Application.currentApplication()`
   returns: the most recently created shadow app wins), and `DCLContext.shadowPackageName`/`shadowApp` remain as
@@ -166,6 +166,12 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   **no intent** (on Android 11 `instantiateService(..., null)`, also on a restart), so what a slot hosts is
   read from its **persisted** `slot -> (class, apk)` assignment (`ServiceSlots`, host SharedPreferences),
   never from extras. A slot is one service instance, so two classes never share one.
+- **PendingIntents** a hosted app creates (notification taps, alarms, shortcuts) are fired by the system later and from
+  outside the process, so `ActivityManagerHook` rewrites their intents when they are *created*
+  (`getIntentSender*`): activity -> `ActivityRouting` proxy slot, service -> `ServiceRouting` slot, broadcast ->
+  restricted to the host so the dynamically registered `DCLReceiverProxy` gets it (action-based only: a PendingIntent
+  broadcast to a receiver by component can't be delivered, nothing is hooked in-process). Firing after process
+  death relies on the extras/persisted slots and is untested.
 - **The system can't instantiate *any* receiver (or other component created via `handleReceiver`) in the
   host.** On Android 11 `ActivityThread.handleReceiver` casts `app.getBaseContext()` to `ContextImpl`,
   and `DCLApplication` wraps its base context in `DCLContext`, so a receiver declared in the host

@@ -93,6 +93,22 @@ public class HelloActivity extends Activity {
             web.loadDataWithBaseURL(null, "<html><head><title>fx-webview</title></head><body>hi</body></html>", "text/html", "UTF-8", null);
             return;
         }
+        if (getIntent().getBooleanExtra("fx.pending", false)) {
+            // PendingIntents the system fires later, from outside the process: to our own activity, service and
+            // (by action) receiver. Sent right away here; real apps hand them to notifications and alarms.
+            try {
+                int flags = android.app.PendingIntent.FLAG_IMMUTABLE;
+                android.app.PendingIntent.getActivity(this, 1,
+                    new Intent(this, HelloActivity.class).putExtra("fx.extra", "pending-activity"), flags).send();
+                android.app.PendingIntent.getService(this, 2,
+                    new Intent(this, HelloService.class).putExtra("via", "pending"), flags).send();
+                android.app.PendingIntent.getBroadcast(this, 3,
+                    new Intent("fx.hello.PING").setPackage("com.mikimn.fixture.hello").putExtra("via", "pending"), flags).send();
+            } catch (Exception e) {
+                Probe.value(this, CHANNEL, "pending.error", e.toString());
+            }
+            return;
+        }
         if (getIntent().getBooleanExtra("fx.stopself", false)) {
             // The service stops itself (stopSelf) instead of being stopped by its client.
             startService(new Intent(this, HelloService.class).putExtra("via", "stopSelf"));

@@ -20,7 +20,7 @@ signing (documented for completeness; likely won't fix).
 | R10 | #22 | 2 | [Support multiple loaded APKs concurrently](#r10) | partial: per-app class loader, package, application context and `LoadedApk.mApplication`; second-APK launch no longer dropped; `mInitialApplication` and `ownerOf` first-match remain global |
 | R11 | #23 | 3 | [Services: in-process Service lifecycle via a proxy service pool](#r11) | partial: start/bind/unbind/stop lifecycle via `DCLServiceProxyN` slots done; `JobService` stub for `JobScheduler`/WorkManager, foreground-service types (`startForeground` untested), restart after process death (design persists slot assignments, but no end-to-end test) |
 | R12 | #24 | 3 | [Register manifest-declared broadcast receivers](#r12) | done (process-alive delivery; dead-process delivery is R13) |
-| R13 | #25 | 3 | [Rewrite PendingIntents (notifications, alarms, shortcuts) to proxy components](#r13) | open |
+| R13 | #25 | 3 | [Rewrite PendingIntents (notifications, alarms, shortcuts) to proxy components](#r13) | partial: activity, service and action-based broadcast PendingIntents are rewritten at `getIntentSender*`; broadcasts to a receiver by component, and firing after process death, are untested/unsupported |
 | R14 | #26 | 3 | [Support android:process multi-process components](#r14) | open |
 | R15 | #27 | 3 | [Harden hidden-API reflection across Android versions](#r15) | open |
 | R16 | #28 | 4 | [System-bound components (widgets, IME, accessibility, wallpaper, tiles, …)](#r16) | open |
