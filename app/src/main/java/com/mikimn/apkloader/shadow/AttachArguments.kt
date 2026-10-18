@@ -12,6 +12,9 @@ package com.mikimn.apkloader.shadow
  * activity token and the second the assist token (later ones are the caller-info/shareable tokens and stay
  * null); the first `String` is the embedded id and the second the referrer. Pure on type *names*, so it is
  * unit-testable without the hidden classes.
+ *
+ * Strict on purpose: a trailing *primitive* (`boolean`, `long`, a second `int`) is not guessed either. A default
+ * value could silently change what the platform does with the activity; better to fail with the signature.
  */
 object AttachArguments {
     /** What a parameter of `Activity.attach` stands for. */

@@ -7,11 +7,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Build
+import android.util.Log
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import com.mikimn.apkloader.dcl.DCLActivity
 import com.mikimn.apkloader.reflection.tryGetValue
 
 object ShadowActivity {
+    private const val TAG = "ShadowActivity"
+
     /**
      * The `Intent` a hosted activity sees from `getIntent()`: a copy of what actually launched the
      * host (extras, action, data, type, **flags** - including URI-grant flags - and clip data),
@@ -32,14 +35,33 @@ object ShadowActivity {
         hostOnlyExtras.forEach { removeExtra(it) }
     }
 
-    /** The hidden `Activity.attach`; on releases that kept an older overload around, the one with most parameters. */
-    private fun findAttach(): java.lang.reflect.Method =
-        HiddenApiBypass.getDeclaredMethods(Activity::class.java)
+    /** The real `Activity.attach` of this device and what each of its parameters stands for. */
+    class AttachTarget(val method: java.lang.reflect.Method, val roles: List<AttachArguments.Role>) {
+        val signature: String get() = method.parameterTypes.joinToString(", ") { it.name }
+    }
+
+    // The signature cannot change within a process: resolved once.
+    private val attachTarget: AttachTarget by lazy { resolveAttach() }
+
+    /** Resolves the hidden `Activity.attach` (on releases that kept an older overload, the one with most parameters). */
+    internal fun resolveAttach(): AttachTarget {
+        val method = HiddenApiBypass.getDeclaredMethods(Activity::class.java)
             .filterIsInstance<java.lang.reflect.Method>()
             .filter { it.name == "attach" }
             .maxByOrNull { it.parameterCount }
             ?.apply { isAccessible = true }
             ?: error("Activity.attach not found on SDK ${Build.VERSION.SDK_INT}")
+        val signature = method.parameterTypes.joinToString(", ") { it.name }
+        return AttachTarget(method, AttachArguments.rolesFor(method.parameterTypes.map { it.name }, signature))
+    }
+
+    // What the platform cannot do without: a hardcoded field name that was renamed reads as null, and an
+    // attach() given no thread/token/... fails far from here. Say which one.
+    private val requiredRoles = listOf(
+        AttachArguments.Role.CONTEXT, AttachArguments.Role.MAIN_THREAD, AttachArguments.Role.INSTRUMENTATION,
+        AttachArguments.Role.TOKEN, AttachArguments.Role.APPLICATION, AttachArguments.Role.INTENT,
+        AttachArguments.Role.ACTIVITY_INFO
+    )
 
     fun attachActivity(
         aInfo: ActivityInfo,
@@ -51,11 +73,13 @@ object ShadowActivity {
         // Activity.attach is hidden and its parameter list changes between Android releases, so it is called
         // by parameter *type* (see AttachArguments), never positionally per API level.
         val activityClass = activity.javaClass
-        val attach = findAttach()
-        val roles = AttachArguments.rolesFor(
-            attach.parameterTypes.map { it.name },
-            signature = attach.parameterTypes.joinToString(", ") { it.name }
-        )
+        val target = try {
+            attachTarget
+        } catch (e: Throwable) {
+            Log.e(TAG, "Cannot use Activity.attach on SDK ${Build.VERSION.SDK_INT} (${Build.MODEL})", e)
+            throw e
+        }
+        val roles = target.roles
         val intent = shadowIntent(
             realActivity.intent, aInfo.packageName ?: baseContext.packageName, activityClass,
             DCLActivity.HOST_ONLY_EXTRAS
@@ -80,6 +104,17 @@ object ShadowActivity {
                 else -> null
             }
         }
-        attach.invoke(activity, *args)
+        roles.forEachIndexed { n, role ->
+            check(role !in requiredRoles || args[n] != null) {
+                "Activity.attach needs a value for $role but got null on SDK ${Build.VERSION.SDK_INT} " +
+                    "(a hardcoded Activity field name probably changed); attach(${target.signature})"
+            }
+        }
+        try {
+            target.method.invoke(activity, *args)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Activity.attach(${target.signature}) failed on SDK ${Build.VERSION.SDK_INT}", e)
+            throw e
+        }
     }
 }
