@@ -29,12 +29,17 @@ import java.io.FileOutputStream
  * `getApplicationInfo()` and `getPackageCodePath()`/`getPackageResourcePath()` instead of the host's
  * own APK, because libraries reopen their own APK by path (crash reporters, asset-bundle loaders,
  * split-install helpers, ...).
+ * @param appClassLoader the loaded app's own class loader, returned by `getClassLoader()`. The process-wide
+ * [FileTrackingClassLoader] cannot tell two loaded apps' same-named classes apart (and ART caches the first
+ * by-name answer per initiating loader), so framework code resolving classes by name through this context
+ * (LayoutInflater, fragment restore, `Class.forName(n, true, ctx.classLoader)`) must get the app's own.
  */
 class DCLContext(
     base: Context,
     private val pluginProvider: ContextPluginProvider = DefaultPluginProvider(),
     private val virtualPackage: String? = null,
-    private val loadedPaths: LoadedApk.Paths? = null
+    private val loadedPaths: LoadedApk.Paths? = null,
+    private val appClassLoader: ClassLoader? = null
 ) : ContextWrapper(base) {
     init {
         // The paths only take effect together with the per-package storage (getApplicationInfo() is
@@ -43,8 +48,13 @@ class DCLContext(
     }
 
     companion object {
+        // Last-set values, kept only as the fallback for contexts that were never told which loaded app they
+        // belong to (the host Application's own context). Anything that knows better - the context's own
+        // instance state, its virtualPackage, or the APK owning the calling class - wins (#22).
         private var shadowPackageName: String? = null
         var shadowApp: Application? = null
+
+        private fun packageOf(apk: LoadedApk): String? = apk.manifestReader?.getApplicationInfo()?.packageName
 
         // Process-lifetime state, deliberately not an instance: PackageManagerAggregate is a
         // process-wide singleton, so a resolver that captured a DCLContext (which wraps an
@@ -56,27 +66,26 @@ class DCLContext(
          * base services, with that package's own storage. [context] may be the host's
          * Application or any wrapper of it.
          */
-        @Suppress("UNUSED_PARAMETER") // [apk] is where its code paths come from once the context reports them
         fun forLoadedApk(context: Context, apk: LoadedApk, packageName: String): Context {
             var base = context
             while (base is ContextWrapper && base !is DCLContext) base = base.baseContext
             if (base is DCLContext) base = base.baseContext
-            return DCLContext(base, virtualPackage = packageName)
+            return DCLContext(base, virtualPackage = packageName, appClassLoader = apk.loader)
         }
 
         /** The loaded package's name if (and only if) the real caller is that APK's own code. */
         fun loadedPackageForCaller(): String? {
-            val shadow = shadowPackageName ?: return null
             val loader = trackingLoader ?: return null
             val callerClassName = CallerClassResolver.findRealCallerClassName() ?: return null
-            return if (loader.ownerOf(callerClassName) != null) shadow else null
+            // The caller's own APK, not "the" loaded one: with several loaded, each answers for itself.
+            return loader.ownerOf(callerClassName)?.let(::packageOf)
         }
     }
 
     override fun getPackageManager(): PackageManager {
         Log.e("DCLContext", "INVOKE getPackageManager")
         val base = super.getPackageManager()
-        (classLoader as? FileTrackingClassLoader)?.let { trackingLoader = it }
+        (super.getClassLoader() as? FileTrackingClassLoader)?.let { trackingLoader = it }
         return pluginProvider.providePackageManager(base).also {
             (it as? PackageManagerAggregate)?.ownUidPackageResolver = Companion::loadedPackageForCaller
         }
@@ -99,9 +108,14 @@ class DCLContext(
     // returning the host's actual, installed identity and break if lied to unconditionally.
     // See docs/apk-test-log.md's "Meme Generator" research notes for how this was derived.
     override fun getPackageName(): String {
-        (classLoader as? FileTrackingClassLoader)?.let { trackingLoader = it }
-        return loadedPackageForCaller() ?: super.getPackageName()
+        (super.getClassLoader() as? FileTrackingClassLoader)?.let { trackingLoader = it }
+        // A per-package context belongs to exactly one app: answer with it, not with whichever APK happens to
+        // be the first to define the calling class (apps bundling the same library share class names).
+        val caller = loadedPackageForCaller() ?: return super.getPackageName()
+        return virtualPackage ?: caller
     }
+
+    override fun getClassLoader(): ClassLoader? = appClassLoader ?: super.getClassLoader()
 
     private var cachedResources: Resources? = null
 
@@ -121,7 +135,7 @@ class DCLContext(
             override fun getIdentifier(name: String?, defType: String?, defPackage: String?): Int {
                 val defaultRes = super.getIdentifier(name, defType, defPackage)
 
-                return shadowPackageName?.let {
+                return (instanceShadowPackage ?: virtualPackage ?: shadowPackageName)?.let {
                     if (defaultRes == 0) {
                         super.getIdentifier(name, defType, it)
                     } else {
@@ -134,15 +148,28 @@ class DCLContext(
         return wrapped
     }
 
+    // The loaded app this very context was set up for (the hosting DCLActivity's base context).
+    private var instanceShadowPackage: String? = null
+    private var instanceShadowApp: Application? = null
+
     override fun getApplicationContext(): Context {
+        instanceShadowApp?.let { return it }
+        virtualPackage?.let { pkg ->
+            // A per-package context answers for its own app only: the app's shadow Application, or - for an app
+            // without an Application class of its own - the host's. Never another app's (the static below).
+            return trackingLoader?.loadedApks()?.firstOrNull { packageOf(it) == pkg }?.shadowApplication
+                ?: super.getApplicationContext()
+        }
         return shadowApp ?: super.getApplicationContext()
     }
 
     fun setShadowPackageName(packageName: String) {
+        instanceShadowPackage = packageName
         shadowPackageName = packageName
     }
 
     fun setShadowApplication(shadowApp: Application) {
+        instanceShadowApp = shadowApp
         DCLContext.shadowApp = shadowApp
     }
 

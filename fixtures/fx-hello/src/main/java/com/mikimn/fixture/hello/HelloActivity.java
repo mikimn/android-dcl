@@ -22,6 +22,16 @@ public class HelloActivity extends Activity {
         Probe.value(this, CHANNEL, "packageName", getPackageName());
         Probe.value(this, CHANNEL, "applicationClass", getApplication().getClass().getName());
         Probe.value(this, CHANNEL, "classLoader", getClass().getClassLoader().getClass().getName());
+        Probe.value(this, CHANNEL, "shared.direct", com.mikimn.fixture.shared.SharedLib.owner());
+        Probe.value(this, CHANNEL, "shared.pkg", com.mikimn.fixture.shared.SharedLib.packageOf(this));
+        Probe.value(this, CHANNEL, "applicationContextClass", getApplicationContext().getClass().getName());
+        try {
+            // by name through the process class loader, the way the framework resolves classes
+            Probe.value(this, CHANNEL, "shared.byName", Class.forName("com.mikimn.fixture.shared.SharedLib", true, getClassLoader())
+                .getMethod("owner").invoke(null));
+        } catch (Exception e) {
+            Probe.value(this, CHANNEL, "shared.byName", e.toString());
+        }
         // What the launcher passed us (getIntent() of a hosted activity: see DCLActivity.HOST_ONLY_EXTRAS).
         android.content.Intent launch = getIntent();
         Probe.value(this, CHANNEL, "intent.action", launch.getAction());
