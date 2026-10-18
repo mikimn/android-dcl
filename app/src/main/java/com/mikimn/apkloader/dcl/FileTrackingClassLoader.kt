@@ -17,6 +17,14 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
 
     val resourcesLoader = ResourcesLoader()
 
+    companion object {
+        /**
+         * The process's loader, installed by [DCLAppComponentFactory]. Code that has only some app's Context
+         * must not ask it for the loader: a hosted app's context returns the app's *own* loader (#22).
+         */
+        @Volatile var process: FileTrackingClassLoader? = null
+    }
+
     fun addApkFile(name: String, data: ByteArray, resources: Resources): LoadedApk {
         if (name in loadedAPKFiles) {
             return loadedAPKFiles[name]!!
@@ -62,6 +70,11 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
         return null
     }
 
+    /** Forgets [apk] as the preferred app, if it still is. */
+    fun clearPreferred(apk: LoadedApk) {
+        if (preferred === apk) preferred = null
+    }
+
     fun clearLast() {
         lastLoadedApk = null
     }
@@ -73,7 +86,11 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
      * The APK of the app currently in the foreground. The framework resolves classes by name through this
      * loader without saying for whom (LayoutInflater, fragment/state restore), and two loaded apps may both
      * bundle a library (androidx, OkHttp, ...): the foreground app's copy wins, instead of whichever was
-     * loaded first. Best effort: a background thread of another app still gets the foreground app's copy.
+     * loaded first. Only callers that go through the process/host loader depend on it (framework code given the
+     * host's context or `Thread.contextClassLoader`; a hosted app's own context returns its own loader and
+     * does not). Best effort: a background thread of another app still gets the foreground app's copy.
+     * Set when a hosted activity is created or resumed, and cleared by [clearPreferred] when that activity is
+     * destroyed (then lookups fall back to first-match).
      */
     @Volatile var preferred: LoadedApk? = null
 

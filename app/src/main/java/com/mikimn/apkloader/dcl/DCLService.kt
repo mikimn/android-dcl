@@ -66,7 +66,7 @@ class DCLService : Service() {
 
     private fun createShadow(t: ServiceSlots.Assignment): Service {
         val app = applicationContext
-        val loader = app.classLoader as? FileTrackingClassLoader ?: error("Host class loader is not a FileTrackingClassLoader")
+        val loader = FileTrackingClassLoader.process ?: error("Host class loader is not a FileTrackingClassLoader")
         val apk = ApkLoading.load(app, loader, t.apkName)
         val pkg = apk.manifestReader!!.getApplicationInfo().packageName
         shadowComponent = ComponentName(pkg, t.className)

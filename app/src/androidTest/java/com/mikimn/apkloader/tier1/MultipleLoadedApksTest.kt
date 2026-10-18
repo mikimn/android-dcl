@@ -9,6 +9,7 @@ import com.mikimn.apkloader.testing.FixtureApks
 import com.mikimn.apkloader.testing.LogcatCrashRule
 import com.mikimn.apkloader.testing.ProbeChannel
 import com.mikimn.apkloader.testing.Tier1
+import com.mikimn.apkloader.testing.assertHoldsFor
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,27 +30,55 @@ class MultipleLoadedApksTest {
         DCLActivity.intentForAPK(target, FixtureApks.install(apk).path).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     )
 
-    @Test fun twoAppsLoadedInOneProcessEachKeepTheirOwnIdentity() {
-        launch("fx-application.apk")
-        app.awaitEvent("activity.onCreate")
-        launch("fx-hello.apk")
-        hello.awaitEvent("onCreate")
-        // launching the earlier app again resumes it (DCLActivity is singleTask): no second Application or activity
-        launch("fx-application.apk")
-        Thread.sleep(1500)
-        assertThat(app.count("activity.onCreate")).isEqualTo(1)
-
+    private fun assertBothKeepTheirOwnIdentity() {
+        val hostApplication = "com.mikimn.apkloader.dcl.DCLApplication"
         assertThat(app.valueOf("activity.applicationClass")).isEqualTo("com.mikimn.fixture.application.FxApplication")
         assertThat(app.valueOf("activity.sameApplication")).isEqualTo("true")
+        assertThat(app.valueOf("applicationContextClass")).isEqualTo("com.mikimn.fixture.application.FxApplication")
         assertThat(app.count("app.onCreate")).isEqualTo(1)
 
-        // fx-hello declares no Application of its own: it gets the host's, never fx-application's
+        // fx-hello declares no Application of its own: it gets the host's - as getApplication() and as its
+        // application context - never fx-application's, whichever app was loaded first
+        assertThat(hello.valueOf("applicationClass")).isEqualTo(hostApplication)
+        assertThat(hello.valueOf("applicationContextClass")).isEqualTo(hostApplication)
+
         // a class both apps bundle: each sees its own copy, directly and by name through its context's class
         // loader (the process-wide loader can only ever answer one of them)
         assertThat(app.valueOf("shared.direct")).isEqualTo("fx-application")
         assertThat(hello.valueOf("shared.direct")).isEqualTo("fx-hello")
         assertThat(app.valueOf("shared.byName")).isEqualTo("fx-application")
         assertThat(hello.valueOf("shared.byName")).isEqualTo("fx-hello")
-        assertThat(hello.valueOf("applicationClass")).isEqualTo("com.mikimn.apkloader.dcl.DCLApplication")
+
+        // and what that library asks its context is never answered with the other app's package
+        assertThat(app.valueOf("shared.pkg")).isNotEqualTo("com.mikimn.fixture.hello")
+        assertThat(hello.valueOf("shared.pkg")).isNotEqualTo("com.mikimn.fixture.application")
+    }
+
+    @Test fun twoAppsLoadedInOneProcessEachKeepTheirOwnIdentity() {
+        launch("fx-application.apk")
+        app.awaitEvent("activity.onCreate")
+        launch("fx-hello.apk")
+        hello.awaitEvent("onCreate")
+        // the second app's service and receivers work with another app already loaded
+        hello.awaitEvent("service.onDestroy")
+        for (via in listOf("explicit", "implicit", "package")) hello.awaitEvent("receiver.$via")
+        assertThat(hello.events().filter { it.startsWith("service.on") })
+            .containsExactly("service.onCreate", "service.onBind", "service.onUnbind", "service.onDestroy").inOrder()
+        for (via in listOf("explicit", "implicit", "package")) assertThat(hello.count("receiver.$via")).isEqualTo(1)
+
+        // launching the earlier app again resumes it (DCLActivity is singleTask): no second Application or activity
+        launch("fx-application.apk")
+        assertHoldsFor("fx-application is not created a second time", 1500) { app.count("activity.onCreate") == 1 }
+
+        assertBothKeepTheirOwnIdentity()
+    }
+
+    // The other launch order: the app without an Application class first, then the one with one.
+    @Test fun theLaunchOrderDoesNotChangeWhoGetsWhichApplication() {
+        launch("fx-hello.apk")
+        hello.awaitEvent("onCreate")
+        launch("fx-application.apk")
+        app.awaitEvent("activity.onCreate")
+        assertBothKeepTheirOwnIdentity()
     }
 }

@@ -409,6 +409,7 @@ class DCLActivity : ComponentActivity() {
     @SuppressLint("MissingSuperCall")
     override fun onDestroy() {
         // super.onDestroy()
+        (classLoader as? FileTrackingClassLoader)?.let { l -> hostedApkName?.let(l::apkFile)?.let(l::clearPreferred) }
         overrideLifecycleCall("onDestroy")
     }
 
@@ -477,13 +478,13 @@ class DCLActivity : ComponentActivity() {
             ?: intent.getStringExtra(KEY_LOADED_APK_NAME)
         // A launch request for a *different* APK (the launcher screen opening a second app while one is
         // running) lands here too, since DCLActivity is singleTask. Host it in a fresh instance instead of
-        // dropping it: a standard proxy slot, atop the running app in the same task.
+        // dropping it: a standard proxy slot (one per launched APK), atop the running app in the same task.
         val launchedApk = intent.getStringExtra(KEY_APK_ASSET_FILE_NAME)
         if (launchedApk != null && hostedApkName != null && launchedApk != hostedApkName) {
             Log.i("DCLActivity", "Hosting $launchedApk in a new instance (this one hosts $hostedApkName)")
             startActivity(
                 Intent(intent)
-                    .setComponent(ComponentName(this, DCLActivityProxyPool.nextClassName()))
+                    .setComponent(ComponentName(this, DCLActivityProxyPool.classNameFor("launch:$launchedApk", ActivityInfo.LAUNCH_MULTIPLE, 0)))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             return

@@ -109,7 +109,10 @@ class DCLContext(
     // See docs/apk-test-log.md's "Meme Generator" research notes for how this was derived.
     override fun getPackageName(): String {
         (super.getClassLoader() as? FileTrackingClassLoader)?.let { trackingLoader = it }
-        return loadedPackageForCaller() ?: super.getPackageName()
+        // A per-package context belongs to exactly one app: answer with it, not with whichever APK happens to
+        // be the first to define the calling class (apps bundling the same library share class names).
+        val caller = loadedPackageForCaller() ?: return super.getPackageName()
+        return virtualPackage ?: caller
     }
 
     override fun getClassLoader(): ClassLoader? = appClassLoader ?: super.getClassLoader()
@@ -152,7 +155,10 @@ class DCLContext(
     override fun getApplicationContext(): Context {
         instanceShadowApp?.let { return it }
         virtualPackage?.let { pkg ->
-            trackingLoader?.loadedApks()?.firstOrNull { packageOf(it) == pkg }?.shadowApplication?.let { return it }
+            // A per-package context answers for its own app only: the app's shadow Application, or - for an app
+            // without an Application class of its own - the host's. Never another app's (the static below).
+            return trackingLoader?.loadedApks()?.firstOrNull { packageOf(it) == pkg }?.shadowApplication
+                ?: super.getApplicationContext()
         }
         return shadowApp ?: super.getApplicationContext()
     }

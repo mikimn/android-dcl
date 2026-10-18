@@ -35,7 +35,7 @@ class DCLReceiverProxy(private val receiverClass: String, private val apkName: S
         fun deliver(context: Context, className: String, apkName: String, intent: Intent, pendingResult: Any? = null) {
             try {
                 val app = context.applicationContext
-                val loader = app.classLoader as? FileTrackingClassLoader
+                val loader = FileTrackingClassLoader.process
                     ?: error("Host class loader is not a FileTrackingClassLoader")
                 val apk = ApkLoading.load(app, loader, apkName)
                 val pkg = apk.manifestReader!!.getApplicationInfo().packageName

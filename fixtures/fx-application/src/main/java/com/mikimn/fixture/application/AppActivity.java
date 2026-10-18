@@ -12,6 +12,8 @@ public class AppActivity extends Activity {
         Probe.value(this, FxApplication.CHANNEL, "activity.sameApplication",
                 getApplication() == getApplicationContext());
         Probe.value(this, FxApplication.CHANNEL, "shared.direct", com.mikimn.fixture.shared.SharedLib.owner());
+        Probe.value(this, FxApplication.CHANNEL, "shared.pkg", com.mikimn.fixture.shared.SharedLib.packageOf(this));
+        Probe.value(this, FxApplication.CHANNEL, "applicationContextClass", getApplicationContext().getClass().getName());
         try {
             // by name through the process class loader, the way the framework resolves classes
             Probe.value(this, FxApplication.CHANNEL, "shared.byName", Class.forName("com.mikimn.fixture.shared.SharedLib", true, getClassLoader())
