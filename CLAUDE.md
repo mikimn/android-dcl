@@ -170,8 +170,11 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   outside the process, so `ActivityManagerHook` rewrites their intents when they are *created*
   (`getIntentSender*`): activity -> `ActivityRouting` proxy slot, service -> `ServiceRouting` slot, broadcast ->
   restricted to the host so the dynamically registered `DCLReceiverProxy` gets it (action-based only: a PendingIntent
-  broadcast to a receiver by component can't be delivered, nothing is hooked in-process). Firing after process
-  death relies on the extras/persisted slots and is untested.
+  broadcast to a receiver by component can't be delivered, nothing is hooked in-process). The routing extras of
+  every proxy-slot launch are **signed** (`RoutingMac`, HMAC with a per-install secret) and the factory refuses
+  (`RefusedActivity`, not a crash) a launch whose extras don't verify: a mutable PendingIntent's holder can `fillIn`
+  missing extras (never replace set ones), e.g. add an `apkAssetFileName` that wins over `loadedApkName`. Firing
+  after process death relies on the extras/persisted slots and is untested.
 - **The system can't instantiate *any* receiver (or other component created via `handleReceiver`) in the
   host.** On Android 11 `ActivityThread.handleReceiver` casts `app.getBaseContext()` to `ContextImpl`,
   and `DCLApplication` wraps its base context in `DCLContext`, so a receiver declared in the host

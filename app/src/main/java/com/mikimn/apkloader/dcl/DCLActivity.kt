@@ -506,6 +506,7 @@ class DCLActivity : ComponentActivity() {
                 Intent(intent)
                     .setComponent(ComponentName(this, DCLActivityProxyPool.classNameFor("launch:$launchedApk", ActivityInfo.LAUNCH_MULTIPLE, 0)))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .also { RoutingMac.sign(it) }
             )
             return
         }

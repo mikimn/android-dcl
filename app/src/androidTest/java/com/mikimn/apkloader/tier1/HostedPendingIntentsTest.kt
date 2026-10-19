@@ -9,6 +9,7 @@ import com.mikimn.apkloader.testing.FixtureApks
 import com.mikimn.apkloader.testing.LogcatCrashRule
 import com.mikimn.apkloader.testing.ProbeChannel
 import com.mikimn.apkloader.testing.Tier1
+import com.mikimn.apkloader.testing.assertHoldsFor
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,5 +40,22 @@ class HostedPendingIntentsTest {
         assertThat(probe.valueOf("intent.extra")).isEqualTo("pending-activity")
         assertThat(probe.valueOf("service.start")).startsWith("pending:")
         assertThat(probe.valueOf("service.start.routingExtras")).isEqualTo("false")
+    }
+
+    // A mutable PendingIntent's holder can add extras with fillIn. The loader signs the routing extras of every launch
+    // it routes (RoutingMac), so adding "apkAssetFileName" (which wins over the signed "loadedApkName") is refused.
+    @Test fun aMutablePendingIntentFilledWithAnotherApkIsRefused() {
+        val evil = FixtureApks.install("fx-resources.apk").path
+        val other = ProbeChannel(target, "fx-resources", loadedPackage = "com.mikimn.fixture.resources").also { it.clear() }
+        target.startActivity(
+            DCLActivity.intentForAPK(target, FixtureApks.install("fx-hello.apk").path)
+                .putExtra("fx.pending.forged", true).putExtra("fx.evil.apk", evil).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        probe.awaitEvent("pending.forged.sent")
+        assertThat(probe.valueOf("pending.error")).isNull()
+        // the forged launch must start nothing: the other APK never runs, and no second hello activity either
+        assertHoldsFor("the forged PendingIntent launch is refused", 3000) {
+            other.events().isEmpty() && probe.count("onCreate") == 1 && probe.valueOf("intent.extra") != "forged-target"
+        }
     }
 }

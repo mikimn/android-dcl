@@ -93,6 +93,20 @@ public class HelloActivity extends Activity {
             web.loadDataWithBaseURL(null, "<html><head><title>fx-webview</title></head><body>hi</body></html>", "text/html", "UTF-8", null);
             return;
         }
+        if (getIntent().getBooleanExtra("fx.pending.forged", false)) {
+            // A MUTABLE PendingIntent to our own activity, fired by a "holder" that fills in an extra naming another
+            // APK. The loader must refuse that launch: nothing of the other APK may run.
+            try {
+                int mutable = 0x02000000; // PendingIntent.FLAG_MUTABLE (API 31; unknown bits are ignored before that)
+                android.app.PendingIntent pi = android.app.PendingIntent.getActivity(this, 5,
+                    new Intent(this, HelloActivity.class).putExtra("fx.extra", "forged-target"), mutable);
+                pi.send(this, 0, new Intent().putExtra("apkAssetFileName", getIntent().getStringExtra("fx.evil.apk")));
+                Probe.log(this, CHANNEL, "pending.forged.sent");
+            } catch (Exception e) {
+                Probe.value(this, CHANNEL, "pending.error", e.toString());
+            }
+            return;
+        }
         if (getIntent().getBooleanExtra("fx.pending", false)) {
             // PendingIntents the system fires later, from outside the process: to our own activity, service and
             // (by action) receiver. Sent right away here; real apps hand them to notifications and alarms.

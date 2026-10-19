@@ -76,6 +76,11 @@ class DCLAppComponentFactory : CoreComponentFactory() {
         intent: Intent?
     ): Activity {
         Log.e("DCLAppComponentFactory", "instantiateActivity($className, $intent)")
+        if (DCLActivityProxyPool.isProxyClassName(className) && !RoutingMac.verify(intent)) {
+            // Extras this loader did not sign (a PendingIntent holder's fillIn, or an intent built by hand): see RoutingMac.
+            Log.w("DCLAppComponentFactory", "Refusing $className: its routing extras are unsigned or altered")
+            return super.instantiateActivity(cl, RefusedActivity::class.java.name, null)
+        }
         // Before the platform reads this activity's saved state: see ApkLoading.preload.
         ApkLoading.currentApplication()?.let { ApkLoading.preload(it, cl, intent) }
         if (className == DCLActivity::class.java.name || className == MainActivity::class.java.name) {

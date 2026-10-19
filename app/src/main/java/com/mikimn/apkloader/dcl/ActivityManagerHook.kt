@@ -27,6 +27,7 @@ object ActivityManagerHook {
     private const val INTENT_SENDER_SERVICE = 4
     private const val INTENT_SENDER_FOREGROUND_SERVICE = 5
     private var installed = false
+    private val warnedComponentBroadcasts = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     fun install(loader: FileTrackingClassLoader, hostPackageName: String) {
         if (installed) return
@@ -143,7 +144,10 @@ object ActivityManagerHook {
                     is ReceiverRouting.Route.Dispatch -> {
                         // The system fires a PendingIntent itself: there is no in-process dispatch to hook, and the
                         // host cannot declare a receiver (docs: CLAUDE.md). Only action-based broadcasts work.
-                        Log.w(TAG, "A PendingIntent broadcast to ${route.className} by component cannot be delivered; use an action")
+                        // Once per distinct target, not once per PendingIntent creation (apps re-create them constantly).
+                        if (warnedComponentBroadcasts.add("${route.className}|${intent.action}")) {
+                            Log.w(TAG, "A PendingIntent broadcast to ${route.className} (action=${intent.action}) by component cannot be delivered; use an action")
+                        }
                         null
                     }
                     ReceiverRouting.Route.None -> null

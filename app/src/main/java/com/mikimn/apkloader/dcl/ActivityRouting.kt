@@ -32,6 +32,7 @@ object ActivityRouting {
         intent.putExtra(DCLActivity.KEY_ACTIVITY_CLASS, targetClassName)
         intent.putExtra(DCLActivity.KEY_LOADED_APK_NAME, owningApk.name)
         intent.component = ComponentName(hostPackageName, proxyClassName)
+        RoutingMac.sign(intent) // a PendingIntent holder must not be able to steer the slot (see RoutingMac)
         return true
     }
 }
