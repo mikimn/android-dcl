@@ -70,5 +70,17 @@ class DCLApplication : Application() {
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(DCLContext(base))
+        // Before anything else can ask for it (the component factory runs after this, in any process start).
+        HostApplication.instance = this
     }
+}
+
+/**
+ * The host's *own* Application, fixed for the life of the process. Not `ApkLoading.currentApplication()`: that is
+ * `ActivityThread.mInitialApplication`, which `ShadowApplication` points at the most recently created loaded app's
+ * shadow Application, whose context redirects preferences and files into that app's own storage. Anything that must
+ * be the same for every loaded app, and across a process restart (like [RoutingMac]'s secret), goes through this.
+ */
+object HostApplication {
+    @Volatile var instance: android.app.Application? = null
 }

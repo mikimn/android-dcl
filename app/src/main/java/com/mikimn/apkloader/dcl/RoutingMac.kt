@@ -17,6 +17,11 @@ import javax.crypto.spec.SecretKeySpec
  * class could be given one, reaching an internal, non-exported activity the fixed component kept out of reach. Every launch the loader itself routes is signed with an HMAC over those extras using a per-install
  * secret ([secret]); the proxy slot refuses anything whose extras do not match ([verify]).
  * [ApkPolicy] separately restricts *which* APKs may be named at all.
+ *
+ * The secret keeps *other apps* from forging a launch. It is not a defence against loaded code: that shares the
+ * host's uid and data directory and can read the preferences file (the project's existing threat model, see
+ * CLAUDE.md). It is always read through [HostApplication], never through whichever Application happens to be current,
+ * which for a loaded app with its own Application class is a per-package context with redirected preferences.
  */
 object RoutingMac {
     const val KEY_MAC = "dclRoutingMac"
@@ -24,13 +29,14 @@ object RoutingMac {
     private const val PREF_SECRET = "secret"
 
     /**
-     * The text a signature covers: each routing extra on its own (empty when absent). Not "the effective value":
-     * `ApkLoading.apkNameOf` prefers `apkAssetFileName` over `loadedApkName`, so a holder *adding* the former to a
-     * signed intent must change the signature even though the latter is still there.
+     * The bytes a signature covers: each routing extra on its own (empty when absent), **length-prefixed** so no value
+     * can shift a boundary into its neighbour (a plain separator could: `"B\nC"` + `""` vs `"B"` + `"C\n"`). Not "the
+     * effective value": `ApkLoading.apkNameOf` prefers `apkAssetFileName` over `loadedApkName`, so a holder *adding* the
+     * former to a signed intent must change the signature even though the latter is still there.
      */
     private fun payload(intent: Intent): ByteArray =
         listOf(DCLActivity.KEY_ACTIVITY_CLASS, DCLActivity.KEY_LOADED_APK_NAME, DCLActivity.KEY_APK_ASSET_FILE_NAME)
-            .joinToString("\n") { intent.getStringExtra(it).orEmpty() }.toByteArray()
+            .joinToString("") { key -> intent.getStringExtra(key).orEmpty().let { "${it.length}:$it" } }.toByteArray()
 
     fun mac(secret: ByteArray, intent: Intent): String =
         Base64.encodeToString(
@@ -59,11 +65,11 @@ object RoutingMac {
         return fresh
     }
 
-    /** [sign] with the process's secret; the intent is left unsigned (and so refused) if there is no Application yet. */
+    /** [sign] with the process's secret; the intent is left unsigned (and so refused) if the host is not up yet. */
     fun sign(intent: Intent) {
-        ApkLoading.currentApplication()?.let { sign(secret(it), intent) }
+        HostApplication.instance?.let { sign(secret(it), intent) }
     }
 
     fun verify(intent: Intent?): Boolean =
-        ApkLoading.currentApplication()?.let { verify(secret(it), intent) } == true
+        HostApplication.instance?.let { verify(secret(it), intent) } == true
 }

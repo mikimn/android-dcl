@@ -66,4 +66,12 @@ class RoutingMacTest {
         intent.putExtra(DCLActivity.KEY_ACTIVITY_CLASS, "com.app.Added")
         assertThat(RoutingMac.verify(secret, intent)).isFalse()
     }
+
+    // A newline is not a boundary: values are length-prefixed
+    @Test fun valuesCannotShiftAcrossTheBoundaryBetweenExtras() {
+        val signed = Intent().putExtra(DCLActivity.KEY_LOADED_APK_NAME, "B\nC").also { RoutingMac.sign(secret, it) }
+        val forged = Intent().putExtra(DCLActivity.KEY_LOADED_APK_NAME, "B").putExtra(DCLActivity.KEY_APK_ASSET_FILE_NAME, "C\n")
+            .putExtra(RoutingMac.KEY_MAC, signed.getStringExtra(RoutingMac.KEY_MAC))
+        assertThat(RoutingMac.verify(secret, forged)).isFalse()
+    }
 }
