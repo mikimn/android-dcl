@@ -909,6 +909,13 @@
 
         </activity>
 
+        <!-- The one JobService every job of a loaded app is scheduled against (DCLJobScheduler rewrites the
+             JobInfo; the loaded class travels in the job's extras). -->
+        <service
+            android:name=".dcl.DCLJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- DCLActivityProxyPool: generic in-app-navigation targets. Each slot hosts a real
              DCLActivity instance (see DCLAppComponentFactory.instantiateActivity) for whichever
              loaded-APK activity ActivityTaskManagerHook retargets to it. The pool is chosen from the

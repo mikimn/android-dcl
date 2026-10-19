@@ -12,6 +12,9 @@
 
         <service android:name=".HelloService" android:exported="false" />
 
+        <service android:name=".HelloJobService" android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- Receives an explicit broadcast (by class) and implicit ones (by action) from HelloActivity. -->
         <receiver android:name=".HelloReceiver" android:exported="false">
             <intent-filter>

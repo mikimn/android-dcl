@@ -93,6 +93,50 @@ public class HelloActivity extends Activity {
             web.loadDataWithBaseURL(null, "<html><head><title>fx-webview</title></head><body>hi</body></html>", "text/html", "UTF-8", null);
             return;
         }
+        if (getIntent().getBooleanExtra("fx.job.cancelAll", false)) {
+            // cancelAll() must cancel this app's own jobs, not every job of the uid (the host's included)
+            try {
+                android.app.job.JobScheduler scheduler =
+                    (android.app.job.JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
+                android.content.ComponentName service = new android.content.ComponentName(this, HelloJobService.class);
+                scheduler.schedule(new android.app.job.JobInfo.Builder(79, service).setMinimumLatency(60L * 60 * 1000).build());
+                Probe.value(this, CHANNEL, "job.cancelAll.before", scheduler.getPendingJob(79) != null);
+                scheduler.cancelAll();
+                Probe.value(this, CHANNEL, "job.cancelAll.own", scheduler.getPendingJob(79) == null);
+            } catch (Exception e) {
+                Probe.value(this, CHANNEL, "job.error", e.toString());
+            }
+            Probe.log(this, CHANNEL, "job.cancelAll.done");
+            return;
+        }
+        if (getIntent().getBooleanExtra("fx.job", false)) {
+            // JobScheduler, the way WorkManager uses it: a job that runs now, and one far in the future that we
+            // only list (it must come back naming our own service class) and cancel.
+            try {
+                android.app.job.JobScheduler scheduler =
+                    (android.app.job.JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
+                android.content.ComponentName service = new android.content.ComponentName(this, HelloJobService.class);
+                android.os.PersistableBundle extras = new android.os.PersistableBundle();
+                extras.putString("fx.job.extra", "now");
+                Probe.value(this, CHANNEL, "job.schedule.now", scheduler.schedule(
+                    new android.app.job.JobInfo.Builder(77, service).setExtras(extras).setOverrideDeadline(0).build()));
+                Probe.value(this, CHANNEL, "job.schedule.later", scheduler.schedule(
+                    new android.app.job.JobInfo.Builder(78, service).setMinimumLatency(60L * 60 * 1000).build()));
+                android.app.job.JobInfo later = scheduler.getPendingJob(78);
+                Probe.value(this, CHANNEL, "job.pending.service", later == null ? null : later.getService().getClassName());
+                Probe.value(this, CHANNEL, "job.pending.extras", later == null ? null : later.getExtras().keySet().toString());
+                boolean listed = false;
+                for (android.app.job.JobInfo info : scheduler.getAllPendingJobs()) {
+                    if (info.getId() == 78 && service.equals(info.getService())) listed = true;
+                }
+                Probe.value(this, CHANNEL, "job.pending.listed", listed);
+                scheduler.cancel(78);
+                Probe.value(this, CHANNEL, "job.pending.afterCancel", scheduler.getPendingJob(78) == null);
+            } catch (Exception e) {
+                Probe.value(this, CHANNEL, "job.error", e.toString());
+            }
+            return;
+        }
         if (getIntent().getBooleanExtra("fx.stopself", false)) {
             // The service stops itself (stopSelf) instead of being stopped by its client.
             startService(new Intent(this, HelloService.class).putExtra("via", "stopSelf"));
