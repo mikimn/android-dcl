@@ -1000,7 +1000,7 @@
         <service android:name=".dcl.DCLServiceProxy15" android:exported="false" />
 
         <activity android:name="com.shazam.android.activities.ConfigurationActivity"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -1027,7 +1027,7 @@
 
         <!--    Flappy Bird APK    -->
         <activity android:name="com.dotgears.GameActivity"
-            android:exported="true"
+            android:exported="false"
             android:launchMode="singleTask" />
 
         <activity android:name="com.oneplus.soundrecorder.RecorderActivity" />
