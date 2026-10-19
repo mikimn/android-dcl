@@ -152,6 +152,22 @@ class DCLContext(
     private var instanceShadowPackage: String? = null
     private var instanceShadowApp: Application? = null
 
+    private var jobScheduler: android.app.job.JobScheduler? = null
+
+    // A loaded app's JobScheduler routes its jobs through the host's DCLJobService (see DCLJobScheduler).
+    override fun getSystemService(name: String): Any? {
+        val service = super.getSystemService(name)
+        if (virtualPackage != null && name == Context.JOB_SCHEDULER_SERVICE && service is android.app.job.JobScheduler &&
+            service !is DCLJobScheduler
+        ) {
+            return jobScheduler ?: DCLJobScheduler(
+                service, super.getPackageName(), { FileTrackingClassLoader.process },
+                { FileTrackingClassLoader.process?.loadedApks()?.firstOrNull { packageOf(it) == virtualPackage }?.name }
+            ).also { jobScheduler = it }
+        }
+        return service
+    }
+
     override fun getApplicationContext(): Context {
         instanceShadowApp?.let { return it }
         virtualPackage?.let { pkg ->

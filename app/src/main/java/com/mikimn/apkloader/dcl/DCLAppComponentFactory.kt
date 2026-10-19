@@ -76,14 +76,21 @@ class DCLAppComponentFactory : CoreComponentFactory() {
         intent: Intent?
     ): Activity {
         Log.e("DCLAppComponentFactory", "instantiateActivity($className, $intent)")
+        if (className == MainActivity::class.java.name) {
+            // The launcher is exported: it must not honor an APK named in the intent of whoever started it.
+            return super.instantiateActivity(cl, className, intent)
+        }
         if (DCLActivityProxyPool.isProxyClassName(className) && !RoutingMac.verify(intent)) {
             // Extras this loader did not sign (a PendingIntent holder's fillIn, or an intent built by hand): see RoutingMac.
             Log.w("DCLAppComponentFactory", "Refusing $className: its routing extras are unsigned or altered")
             return super.instantiateActivity(cl, RefusedActivity::class.java.name, null)
         }
+        // Only the loader's own activities (DCLActivity and the proxy slots) act on an APK named in the intent.
         // Before the platform reads this activity's saved state: see ApkLoading.preload.
-        ApkLoading.currentApplication()?.let { ApkLoading.preload(it, cl, intent) }
-        if (className == DCLActivity::class.java.name || className == MainActivity::class.java.name) {
+        if (className == DCLActivity::class.java.name || DCLActivityProxyPool.isProxyClassName(className)) {
+            ApkLoading.currentApplication()?.let { ApkLoading.preload(it, cl, intent) }
+        }
+        if (className == DCLActivity::class.java.name) {
             return super.instantiateActivity(cl, className, intent)
         }
 
@@ -96,7 +103,12 @@ class DCLAppComponentFactory : CoreComponentFactory() {
             return super.instantiateActivity(cl, DCLActivity::class.java.name, intent)
         }
 
-        return instantiateDCLActivity(cl, className, intent ?: Intent())
+        // A legacy app-specific entry (no APK in its intent by design): ignore any APK extras it was started with.
+        val sanitized = Intent(intent ?: Intent()).apply {
+            removeExtra(DCLActivity.KEY_APK_ASSET_FILE_NAME)
+            removeExtra(DCLActivity.KEY_LOADED_APK_NAME)
+        }
+        return instantiateDCLActivity(cl, className, sanitized)
     }
 
     override fun instantiateReceiver(

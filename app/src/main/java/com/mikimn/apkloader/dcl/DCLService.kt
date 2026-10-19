@@ -1,16 +1,12 @@
 package com.mikimn.apkloader.dcl
 
-import android.app.Application
 import android.app.Service
 import android.content.ComponentName
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.IBinder
 import android.util.Log
-import com.mikimn.apkloader.apk.LoadedApk
 import com.mikimn.apkloader.reflection.tryGetValue
-import com.mikimn.apkloader.shadow.ShadowApplication
-import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 /**
  * The host-side `Service` behind every [DCLServiceProxyPool] slot. The system creates it (through
@@ -64,35 +60,8 @@ class DCLService : Service() {
         }
     }
 
-    private fun createShadow(t: ServiceSlots.Assignment): Service {
-        val app = applicationContext
-        val loader = FileTrackingClassLoader.process ?: error("Host class loader is not a FileTrackingClassLoader")
-        val apk = ApkLoading.load(app, loader, t.apkName)
-        val pkg = apk.manifestReader!!.getApplicationInfo().packageName
-        shadowComponent = ComponentName(pkg, t.className)
-
-        val service = apk.loadClass(t.className).getDeclaredConstructor().newInstance() as Service
-        val context = DCLContext.forLoadedApk(app, apk, pkg)
-        // Service.attach(Context, ActivityThread, String className, IBinder token, Application, Object am)
-        // (hidden). The host's own token and className make stopSelf()/startForeground() act on this slot.
-        HiddenApiBypass.invoke(
-            Service::class.java, service, "attach",
-            context, tryGetValue<Any>("mThread"), tryGetValue<String>("mClassName"),
-            tryGetValue<IBinder>("mToken"), shadowApplication(loader, apk, context), tryGetValue<Any>("mActivityManager")
-        )
-        return service
-    }
-
-    /** The loaded app's own Application (created once per APK, as DCLActivity does), else the host's. */
-    private fun shadowApplication(loader: FileTrackingClassLoader, apk: LoadedApk, context: android.content.Context): Application {
-        apk.shadowApplication?.let { return it }
-        val className = apk.manifestReader?.getApplicationInfo()?.name ?: return application
-        return ShadowApplication.createShadowApplication(loader, className, application, context).also {
-            apk.shadowApplication = it
-            (context as? DCLContext)?.setShadowApplication(it)
-            ShadowApplication.onCreate(it)
-        }
-    }
+    private fun createShadow(t: ServiceSlots.Assignment): Service =
+        HostedServices.create(this, t.className, t.apkName).also { shadowComponent = it.component }.service
 
     /** What the loaded service sees: its own component, none of the loader's routing extras. */
     private fun unwrap(intent: Intent?): Intent? = intent?.let {
