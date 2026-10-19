@@ -97,7 +97,7 @@ public class HelloActivity extends Activity {
             // A MUTABLE PendingIntent to our own activity, fired by a "holder" that fills in an extra naming another
             // APK. The loader must refuse that launch: nothing of the other APK may run.
             try {
-                int mutable = 0x02000000; // PendingIntent.FLAG_MUTABLE (API 31; unknown bits are ignored before that)
+                int mutable = android.app.PendingIntent.FLAG_MUTABLE; // a compile-time constant: harmless below API 31
                 android.app.PendingIntent pi = android.app.PendingIntent.getActivity(this, 5,
                     new Intent(this, HelloActivity.class).putExtra("fx.extra", "forged-target"), mutable);
                 pi.send(this, 0, new Intent().putExtra("apkAssetFileName", getIntent().getStringExtra("fx.evil.apk")));
