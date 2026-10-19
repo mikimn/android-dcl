@@ -7,6 +7,7 @@ import android.app.Application
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.ContentProvider
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.util.Log
@@ -122,7 +123,25 @@ class DCLAppComponentFactory : CoreComponentFactory() {
             // slot exists, as with the activity pool). The intent is null here on Android 11.
             return super.instantiateService(cl, DCLService::class.java.name, intent)
         }
-        return super.instantiateService(cl, className, intent)
+        return try {
+            super.instantiateService(cl, className, intent)
+        } catch (e: ClassNotFoundException) {
+            // Declared in the host manifest (a leftover entry for a loaded app's service) but not loadable here, e.g.
+            // a job or alarm firing in a fresh process before any APK is loaded. Failing would kill the host process.
+            Log.e("DCLAppComponentFactory", "Service $className is not loadable in this process; hosting a stub", e)
+            val standIn = if (isJobService(className)) DCLJobService::class.java else DanglingService::class.java
+            super.instantiateService(cl, standIn.name, intent)
+        }
+    }
+
+    /** Whether the host manifest declares [className] as a job service (guarded by `BIND_JOB_SERVICE`). */
+    private fun isJobService(className: String): Boolean = try {
+        ApkLoading.currentApplication()?.let { app ->
+            app.packageManager.getServiceInfo(ComponentName(app.packageName, className), 0).permission ==
+                android.app.job.JobService.PERMISSION_BIND
+        } == true
+    } catch (e: Exception) {
+        false
     }
 
     override fun instantiateProvider(cl: ClassLoader, className: String): ContentProvider {
