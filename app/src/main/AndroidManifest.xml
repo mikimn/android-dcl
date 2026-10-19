@@ -895,10 +895,13 @@
 <!--            android:name="com.android.calculator2.Calculator"-->
 <!--            android:targetActivity=".MainActivity" />-->
 
+        <!-- Not exported: DCLActivity loads whatever APK path its intent names, i.e. runs that code in this
+             process with this uid and all of its permissions, so only the host's own UI may start it (#55).
+             Debug builds export it again (src/debug/AndroidManifest.xml) for `am start` / scripts/test-apk.sh. -->
         <activity
             android:theme="@style/Theme.APKLoader"
             android:name=".dcl.DCLActivity"
-            android:exported="true"
+            android:exported="false"
             android:launchMode="singleTask"
             android:windowSoftInputMode="stateAlwaysHidden"
             android:showForAllUsers="true"
@@ -997,7 +1000,7 @@
         <service android:name=".dcl.DCLServiceProxy15" android:exported="false" />
 
         <activity android:name="com.shazam.android.activities.ConfigurationActivity"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -1024,7 +1027,7 @@
 
         <!--    Flappy Bird APK    -->
         <activity android:name="com.dotgears.GameActivity"
-            android:exported="true"
+            android:exported="false"
             android:launchMode="singleTask" />
 
         <activity android:name="com.oneplus.soundrecorder.RecorderActivity" />

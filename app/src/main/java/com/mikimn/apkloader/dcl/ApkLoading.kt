@@ -27,6 +27,10 @@ object ApkLoading {
         loader.apkFile(apkName)?.let { return it }
         // This archive was already rejected in this process: don't extract it again.
         rejected[apkName]?.let { throw it }
+        // The one place every loader entry point funnels through: see ApkPolicy.
+        if (!ApkPolicy.allowed(context, apkName)) {
+            throw SecurityException("Refusing to load $apkName: not a bundled asset or an installed package's APK")
+        }
 
         val reader = AssetReader(context)
         val apkFile = File(apkName)
