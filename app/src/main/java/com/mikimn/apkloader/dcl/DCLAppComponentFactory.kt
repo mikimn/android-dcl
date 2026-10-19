@@ -26,7 +26,13 @@ class DCLAppComponentFactory : CoreComponentFactory() {
         // return super.instantiateClassLoader(cl, aInfo)
         val defaultClassLoader = super.instantiateClassLoader(cl, aInfo)
         val newClassLoader = FileTrackingClassLoader(defaultClassLoader)
-        FileTrackingClassLoader.process = newClassLoader
+        // Expected once per process. If it ever ran twice the framework would get this second loader (and so
+        // would new components) while `process` keeps naming the first, i.e. two APK registries: say so.
+        if (FileTrackingClassLoader.process == null) {
+            FileTrackingClassLoader.process = newClassLoader
+        } else {
+            Log.w("DCLAppComponentFactory", "A second FileTrackingClassLoader was created in this process; APKs loaded through it are invisible to the process-wide one")
+        }
         Thread.currentThread().contextClassLoader = newClassLoader
         return newClassLoader
         // return BaseDexClassLoader("", null, null, FileTrackingClassLoader(super.instantiateClassLoader(cl, aInfo)))
