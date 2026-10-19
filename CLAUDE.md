@@ -172,7 +172,10 @@ the `MlKitInitProvider` skip) — prefer generic mechanisms for new fixes.
   replaced, class/APK/package in the job's own persistable extras, so it survives reboots), and hands pending jobs
   back as the app scheduled them. `DCLJobService` hosts one loaded `JobService` per class (`HostedServices`) and
   gives it the host's `mEngine` (via `HiddenApiBypass`: plain reflection is denied) so `jobFinished()` works. Job ids
-  are per *uid* and loaded apps share it: colliding ids across apps are not namespaced.
+  are per *uid* and loaded apps share it: colliding ids across apps are not namespaced, but an app can only see and
+  cancel its own routed jobs (`cancelAll()` is scoped by the job's `KEY_APK`, not the real `cancelAll()`), every public
+  `JobScheduler` method is overridden (`DCLJobSchedulerCompletenessTest`; API 36 additions need a newer `compileSdk`),
+  and a job whose loaded service fails to start is rescheduled unless the APK is gone or was refused by `ApkPolicy`.
 - **The system can't instantiate *any* receiver (or other component created via `handleReceiver`) in the
   host.** On Android 11 `ActivityThread.handleReceiver` casts `app.getBaseContext()` to `ContextImpl`,
   and `DCLApplication` wraps its base context in `DCLContext`, so a receiver declared in the host

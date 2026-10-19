@@ -160,8 +160,10 @@ class DCLContext(
         if (virtualPackage != null && name == Context.JOB_SCHEDULER_SERVICE && service is android.app.job.JobScheduler &&
             service !is DCLJobScheduler
         ) {
-            return jobScheduler ?: DCLJobScheduler(service, super.getPackageName()) { FileTrackingClassLoader.process }
-                .also { jobScheduler = it }
+            return jobScheduler ?: DCLJobScheduler(
+                service, super.getPackageName(), { FileTrackingClassLoader.process },
+                { FileTrackingClassLoader.process?.loadedApks()?.firstOrNull { packageOf(it) == virtualPackage }?.name }
+            ).also { jobScheduler = it }
         }
         return service
     }

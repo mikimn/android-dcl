@@ -26,6 +26,33 @@ class HostedJobsTest {
     private val probe = ProbeChannel(target, "fx-hello", loadedPackage = "com.mikimn.fixture.hello").also { it.clear() }
 
     @Test fun aLoadedJobServiceRunsAndFinishesAndPendingJobsLookUnchanged() {
+        runLoadedJobs()
+    }
+
+    // cancelAll() on a loaded app's scheduler is the app's own jobs only: the host's job of the same uid survives it
+    @Test fun cancelAllCancelsTheAppsOwnJobsButNotTheHosts() {
+        val hostScheduler = target.getSystemService(android.app.job.JobScheduler::class.java)
+        val hostJobId = 900
+        hostScheduler.schedule(
+            android.app.job.JobInfo.Builder(hostJobId, android.content.ComponentName(target, com.mikimn.apkloader.dcl.DCLJobService::class.java))
+                .setMinimumLatency(60L * 60 * 1000).build()
+        )
+        try {
+            target.startActivity(
+                DCLActivity.intentForAPK(target, FixtureApks.install("fx-hello.apk").path)
+                    .putExtra("fx.job.cancelAll", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            probe.awaitEvent("job.cancelAll.done")
+            assertThat(probe.valueOf("job.error")).isNull()
+            assertThat(probe.valueOf("job.cancelAll.before")).isEqualTo("true")
+            assertThat(probe.valueOf("job.cancelAll.own")).isEqualTo("true")
+            assertThat(hostScheduler.getPendingJob(hostJobId)).isNotNull()
+        } finally {
+            hostScheduler.cancel(hostJobId)
+        }
+    }
+
+    private fun runLoadedJobs() {
         target.startActivity(
             DCLActivity.intentForAPK(target, FixtureApks.install("fx-hello.apk").path)
                 .putExtra("fx.job", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

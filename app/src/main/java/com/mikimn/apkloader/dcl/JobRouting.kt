@@ -4,6 +4,7 @@ import android.app.job.JobInfo
 import android.content.ComponentName
 import android.os.Parcel
 import com.mikimn.apkloader.reflection.tryGetField
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 /**
  * Retargets a loaded app's `JobInfo` (WorkManager's `SystemJobScheduler`, `JobScheduler.schedule` directly) at the
@@ -51,7 +52,12 @@ object JobRouting {
     }
 
     private fun setService(job: JobInfo, service: ComponentName) {
-        val field = JobInfo::class.java.tryGetField("service") ?: error("JobInfo.service not found")
+        // Plain reflection on a hidden field can be denied outright (JobService.mEngine is, on Android 11): fall back
+        // to HiddenApiBypass. Verified on API 30 only; a newer release that hides the field differently fails here.
+        val field = JobInfo::class.java.tryGetField("service")
+            ?: HiddenApiBypass.getInstanceFields(JobInfo::class.java)
+                .filterIsInstance<java.lang.reflect.Field>().firstOrNull { it.name == "service" }
+            ?: error("JobInfo.service not found on SDK ${android.os.Build.VERSION.SDK_INT}")
         field.isAccessible = true
         field.set(job, service)
     }

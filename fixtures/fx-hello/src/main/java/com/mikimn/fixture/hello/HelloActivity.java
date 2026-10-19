@@ -93,6 +93,22 @@ public class HelloActivity extends Activity {
             web.loadDataWithBaseURL(null, "<html><head><title>fx-webview</title></head><body>hi</body></html>", "text/html", "UTF-8", null);
             return;
         }
+        if (getIntent().getBooleanExtra("fx.job.cancelAll", false)) {
+            // cancelAll() must cancel this app's own jobs, not every job of the uid (the host's included)
+            try {
+                android.app.job.JobScheduler scheduler =
+                    (android.app.job.JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
+                android.content.ComponentName service = new android.content.ComponentName(this, HelloJobService.class);
+                scheduler.schedule(new android.app.job.JobInfo.Builder(79, service).setMinimumLatency(60L * 60 * 1000).build());
+                Probe.value(this, CHANNEL, "job.cancelAll.before", scheduler.getPendingJob(79) != null);
+                scheduler.cancelAll();
+                Probe.value(this, CHANNEL, "job.cancelAll.own", scheduler.getPendingJob(79) == null);
+            } catch (Exception e) {
+                Probe.value(this, CHANNEL, "job.error", e.toString());
+            }
+            Probe.log(this, CHANNEL, "job.cancelAll.done");
+            return;
+        }
         if (getIntent().getBooleanExtra("fx.job", false)) {
             // JobScheduler, the way WorkManager uses it: a job that runs now, and one far in the future that we
             // only list (it must come back naming our own service class) and cancel.
