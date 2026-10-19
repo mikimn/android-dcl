@@ -70,9 +70,22 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
         return null
     }
 
-    /** Forgets [apk] as the preferred app, if it still is. */
-    fun clearPreferred(apk: LoadedApk) {
-        if (preferred === apk) preferred = null
+    private val liveActivities = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /** A hosted activity of [apk] was created: it is now the preferred app, and counts as live. */
+    fun activityCreated(apk: LoadedApk) {
+        liveActivities.merge(apk.name, 1, Int::plus)
+        preferred = apk
+    }
+
+    /**
+     * A hosted activity of [apk] was destroyed. [preferred] is forgotten only when it was the APK's *last* live
+     * activity: finishing activity A after navigating to B of the same app must not clear it while B is in front.
+     */
+    fun activityDestroyed(apk: LoadedApk) {
+        // (a destroy with no matching create also lands on null: the safe direction)
+        val left = liveActivities.compute(apk.name) { _, n -> if (n == null || n <= 1) null else n - 1 }
+        if (left == null && preferred === apk) preferred = null
     }
 
     fun clearLast() {
@@ -89,8 +102,8 @@ class FileTrackingClassLoader(val baseClassLoader: ClassLoader) : ClassLoader() 
      * loaded first. Only callers that go through the process/host loader depend on it (framework code given the
      * host's context or `Thread.contextClassLoader`; a hosted app's own context returns its own loader and
      * does not). Best effort: a background thread of another app still gets the foreground app's copy.
-     * Set when a hosted activity is created or resumed, and cleared by [clearPreferred] when that activity is
-     * destroyed (then lookups fall back to first-match).
+     * Set when a hosted activity is created or resumed, and cleared by [activityDestroyed] when the app's last
+     * live activity is destroyed (then lookups fall back to first-match).
      */
     @Volatile var preferred: LoadedApk? = null
 

@@ -105,4 +105,16 @@ class FileTrackingClassLoaderTest {
         fx.load("fx-resources.apk") // idempotent: no third provider
         assertThat(loader.resourcesLoader.providers).hasSize(2)
     }
+
+    // Finishing activity A after navigating to B of the same app must not forget the preferred app while B is in front.
+    @Test fun preferredIsForgottenOnlyWhenTheAppsLastActivityIsDestroyed() {
+        val hello = fx.load("fx-hello.apk")
+        loader.activityCreated(hello) // activity A
+        loader.activityCreated(hello) // activity B of the same app
+        assertThat(loader.preferred).isSameInstanceAs(hello)
+        loader.activityDestroyed(hello) // A finishes
+        assertThat(loader.preferred).isSameInstanceAs(hello)
+        loader.activityDestroyed(hello) // B finishes
+        assertThat(loader.preferred).isNull()
+    }
 }
