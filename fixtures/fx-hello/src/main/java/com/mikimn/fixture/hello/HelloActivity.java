@@ -120,6 +120,9 @@ public class HelloActivity extends Activity {
                     new Intent("fx.hello.PING").setPackage("com.mikimn.fixture.hello").putExtra("via", "pending"), flags).send();
             } catch (Exception e) {
                 Probe.value(this, CHANNEL, "pending.error", e.toString());
+            }
+            return;
+        }
         if (getIntent().getBooleanExtra("fx.job.cancelAll", false)) {
             // cancelAll() must cancel this app's own jobs, not every job of the uid (the host's included)
             try {
