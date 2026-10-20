@@ -42,6 +42,12 @@ object DCLServiceProxyPool {
  * A slot is only "running" once [DCLService.onCreate] runs, so an assignment is also protected for
  * [PENDING_MS] after it is made or used, and after the process starts (a sticky service the system is about
  * to restart under its old slot, when nothing is running yet): until then it is not evicted.
+ *
+ * Known gap: a `PendingIntent` (alarm, notification action) for a service holds the *slot* it was created with, and
+ * fires after the process may have died. If the pool filled up in the meantime and that slot's assignment was
+ * evicted and reassigned, the late PendingIntent starts whichever class the slot hosts now. Only services whose
+ * slot is not running and not recently used are evicted, so this needs more than [size] distinct service classes
+ * to be in use; it is not guarded against.
  */
 class ServiceSlots(
     private val store: Store,

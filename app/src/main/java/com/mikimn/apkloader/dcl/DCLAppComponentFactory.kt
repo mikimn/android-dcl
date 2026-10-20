@@ -80,6 +80,11 @@ class DCLAppComponentFactory : CoreComponentFactory() {
             // The launcher is exported: it must not honor an APK named in the intent of whoever started it.
             return super.instantiateActivity(cl, className, intent)
         }
+        if (DCLActivityProxyPool.isProxyClassName(className) && !RoutingMac.verify(intent)) {
+            // Extras this loader did not sign (a PendingIntent holder's fillIn, or an intent built by hand): see RoutingMac.
+            Log.w("DCLAppComponentFactory", "Refusing $className: its routing extras are unsigned or altered")
+            return super.instantiateActivity(cl, RefusedActivity::class.java.name, null)
+        }
         // Only the loader's own activities (DCLActivity and the proxy slots) act on an APK named in the intent.
         // Before the platform reads this activity's saved state: see ApkLoading.preload.
         if (className == DCLActivity::class.java.name || DCLActivityProxyPool.isProxyClassName(className)) {
