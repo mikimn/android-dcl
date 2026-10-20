@@ -143,8 +143,11 @@ public class HelloActivity extends Activity {
             // JobScheduler, the way WorkManager uses it: a job that runs now, and one far in the future that we
             // only list (it must come back naming our own service class) and cancel.
             try {
+                // Libraries (WorkManager, Firebase's data transport) schedule through getApplicationContext(), which for
+                // an app without an Application class of its own is the host's: opt in to that path.
+                Context schedulerContext = getIntent().getBooleanExtra("fx.job.appctx", false) ? getApplicationContext() : this;
                 android.app.job.JobScheduler scheduler =
-                    (android.app.job.JobScheduler) getSystemService(Context.JOB_SCHEDULER_SERVICE);
+                    (android.app.job.JobScheduler) schedulerContext.getSystemService(Context.JOB_SCHEDULER_SERVICE);
                 android.content.ComponentName service = new android.content.ComponentName(this, HelloJobService.class);
                 android.os.PersistableBundle extras = new android.os.PersistableBundle();
                 extras.putString("fx.job.extra", "now");

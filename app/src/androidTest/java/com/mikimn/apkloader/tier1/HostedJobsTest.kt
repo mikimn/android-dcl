@@ -29,6 +29,30 @@ class HostedJobsTest {
         runLoadedJobs()
     }
 
+    // WorkManager / Firebase's data transport schedule through getApplicationContext(): for an app without its own
+    // Application class that is the HOST's Application, whose JobScheduler used to be the unwrapped real one, so the job
+    // named a service class the system (and, after a restart, the host) cannot run. fx-hello has no Application class.
+    @Test fun jobsScheduledThroughTheApplicationContextAreRoutedToo() {
+        runLoadedJobs(extraFlag = "fx.job.appctx")
+    }
+
+    // A job against a service the host manifest declares but whose class only the loaded app has, firing in a process
+    // where no APK is loaded (the datatransport crash): must not take the host down, and the job is dropped.
+    @Test fun aJobAgainstAnUnloadableDeclaredServiceDoesNotCrashTheHost() {
+        val scheduler = target.getSystemService(android.app.job.JobScheduler::class.java)
+        val dangling = android.content.ComponentName(
+            target.packageName, "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService"
+        )
+        assertThat(scheduler.schedule(android.app.job.JobInfo.Builder(901, dangling).setOverrideDeadline(0).build()))
+            .isEqualTo(android.app.job.JobScheduler.RESULT_SUCCESS)
+        try {
+            // the system runs it at once; the stand-in drops it (no loaded service named): it is no longer pending
+            com.mikimn.apkloader.testing.waitFor("the dangling job ran and was dropped") { scheduler.getPendingJob(901) == null }
+        } finally {
+            scheduler.cancel(901)
+        }
+    }
+
     // cancelAll() on a loaded app's scheduler is the app's own jobs only: the host's job of the same uid survives it
     @Test fun cancelAllCancelsTheAppsOwnJobsButNotTheHosts() {
         val hostScheduler = target.getSystemService(android.app.job.JobScheduler::class.java)
@@ -52,10 +76,10 @@ class HostedJobsTest {
         }
     }
 
-    private fun runLoadedJobs() {
+    private fun runLoadedJobs(extraFlag: String? = null) {
         target.startActivity(
             DCLActivity.intentForAPK(target, FixtureApks.install("fx-hello.apk").path)
-                .putExtra("fx.job", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra("fx.job", true).apply { extraFlag?.let { putExtra(it, true) } }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
         probe.awaitEvent("job.finished")
 
